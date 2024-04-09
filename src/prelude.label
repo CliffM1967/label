@@ -16,7 +16,9 @@
     [][true] TEST   [ assert the stack is now empty ];
 
     [ for brevity, we define ':' to be DEFINE ];
-    [PARENT DEFINE CHILD][:]DEFINE  
+    
+    [LEAVE DEFINE CREATE ENTER][:]DEFINE
+
 
     [ the following 'define' gives us a delayed-lookup ];
    [

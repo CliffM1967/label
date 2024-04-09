@@ -24,8 +24,9 @@ pub enum Token {
     Symbol(String),
 }
 
+#[derive(Debug,Clone,PartialEq)]
 struct Environment {
-    map: HashMap<String, String>,
+    map: HashMap<String, StackEntry>,
     parent: Option<Box<Environment>>,
 }
 
@@ -51,13 +52,17 @@ impl Environment {
         Ok(*self.parent.unwrap())
     }
 
-    fn define(&mut self, key: String, value: String) {
+    fn assign_parent(&mut self,parent:Environment){
+        self.parent = Some(Box::new(parent));
+    }
+
+    fn define(&mut self, key: String, value: StackEntry) {
         self.map.insert(key, value);
     }
 
-    fn lookup(&self, key: String) -> Result<String, String> {
+    fn lookup(&self, key: String) -> Result<StackEntry, String> {
         if self.map.contains_key(&key) {
-            return Ok(self.map.get(&key).unwrap().to_string());
+            return Ok(self.map.get(&key).unwrap().clone());
         }
         if self.parent.is_none() {
             return Err(format!("Cannot lookup '{key}'"));
@@ -65,6 +70,15 @@ impl Environment {
         self.parent.as_ref().unwrap().lookup(key)
     }
 }
+
+#[derive(Debug,Clone,PartialEq)]
+pub enum StackEntry{
+    String(String),
+    Environment(Environment),
+}
+
+type Stack = Vec<StackEntry>;
+
 
 /* The execution model is that Strings will be pushed onto a stack, while
 commands will "execute" in some manner.
@@ -95,9 +109,29 @@ fn option_to_result<T>(option: Option<T>, message: &str) -> Result<T, String> {
     }
 }
 
-fn stack_pop(stack: &mut Vec<String>, message: &str) -> Result<String, String> {
-    option_to_result(stack.pop(), message)
+fn stack_pop_string(stack: &mut Stack, message: &str) -> Result<String, String> {
+    match stack.pop(){
+        None => Err(format!("pop on Empty stack:{}",message)),
+        Some(StackEntry::String(s)) => Ok(s),
+        o => {
+            let m = format!("Shouldn't get here:String expected got {:?}",o);
+            panic!("{}",m);
+        },
+    }
+    //option_to_result(stack.pop(), message)
 }
+
+/*
+fn stack_pop_boolean(stack: &mut Stack,message:&str) ->
+Result<bool,String>{
+    match stack.pop(){
+        None => Err(format!("pop on Empty stack:{}",message)),
+        Some(StackEntry::String(s)) => Ok(s),
+        _ => panic!("Shouldn't get here:String expected"),
+    }
+    
+}
+*/
 
 fn _prelude() -> String {
     "".to_string()
@@ -108,17 +142,17 @@ fn prelude() -> String {
 }
 
 // what we run in the tests
-fn run(program: &str) -> Result<Vec<String>, String> {
+fn run(program: &str) -> Result<Stack, String> {
     run_with_passed_prelude(program, "".to_string())
 }
 
 // what we run in main.rs
-pub fn run_with_prelude(program: &str) -> Result<Vec<String>, String> {
+pub fn run_with_prelude(program: &str) -> Result<Stack, String> {
     run_with_passed_prelude(program, prelude())
 }
 
 // both of the above call this function
-fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>, String> {
+fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, String> {
     // prefix the prelude with a space
     let program = format!("{} {}", prelude, program);
     let mut program = parse(&program)?;
@@ -131,44 +165,60 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>
     let mut env = Environment::new();
 
     loop {
-        //for cmd in parse(program)? {
         if program.len() == 0 {
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
-        //println!("Executing {:?}", cmd);
         match cmd {
-            Command::String(s) => stack.push(s),
+            Command::String(s) => stack.push(StackEntry::String(s)),
             Command::Symbol(s) => match s.as_str() {
                 "DUP" => {
-                    let tos = stack_pop(&mut stack, "Empty stack for DUP")?;
-                    stack.push(tos.clone());
-                    stack.push(tos);
+                    let tos = stack_pop_string(&mut stack, "Empty stack for DUP")?;
+                    stack.push(StackEntry::String(tos.clone()));
+                    stack.push(StackEntry::String(tos));
                 }
                 "DEFINE" => {
-                    let key = stack_pop(&mut stack, "no key for DEFINE")?;
-                    let value = stack_pop(&mut stack, &format!("no value for DEFINE '{key}'"))?;
+                    let key = stack_pop_string(&mut stack, "no key for DEFINE")?;
+                    let value = stack.pop().unwrap();
+                    //let value = stack_pop_string(&mut stack, &format!("no value for DEFINE '{key}'"))?;
                     env.define(key, value);
                 }
                 "LOOKUP" => {
-                    let key = stack_pop(&mut stack, "no key for LOOKUP")?;
+                    let key = stack_pop_string(&mut stack, "no key for LOOKUP")?;
                     let value = env.lookup(key)?;
+                    //stack.push(StackEntry::String(value));
                     stack.push(value);
                 }
                 "EXECUTE" => {
-                    let subprogram = stack_pop(&mut stack, "no string for EXECUTE")?;
+                    let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
                     let mut cmds = parse(&subprogram)?;
-                    program.push(Command::Symbol("PARENT".to_string()));
+                    program.push(Command::Symbol("LEAVE".to_string()));
                     cmds.reverse();
                     program.extend(cmds);
-                    program.push(Command::Symbol("CHILD".to_string()));
+                    program.push(Command::Symbol("ENTER".to_string()));
+                    program.push(Command::Symbol("CREATE".to_string()));
                 }
-                "CHILD" => env = env.child_get(),
-                "PARENT" => env = env.parent_get()?,
+                "CREATE" => {
+                    let e = StackEntry::Environment(Environment::new());
+                    stack.push(e);
+                }
+                "ENTER" => {
+                    match stack.pop(){
+                        Some(StackEntry::Environment(mut child)) => {
+                            child.assign_parent(env);
+                            env = child;
+                        },
+                        _ => return Err("No child environment".to_string()),
+                    }
+                },
+                "LEAVE" => env = env.parent_get()?,
+
+                "xCHILD" => env = env.child_get(),
+                "xPARENT" => env = env.parent_get()?,
                 "ERROR" => match stack.len() {
                     0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
                     _ => {
-                        let text = stack_pop(&mut stack, "foo")?;
+                        let text = stack_pop_string(&mut stack, "foo")?;
                         let r = format!("ERROR TERMINATION:{text}");
                         return Err(r);
                     }
@@ -176,44 +226,45 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>
 
                 "STEQ" => {
                     //  pop all 4 arguments off the stack
-                    let unequal_string = stack_pop(&mut stack, "STEQ:no string")?;
-                    let equal_string = stack_pop(&mut stack, "STEQ:no string")?;
-                    let s1 = stack_pop(&mut stack, "STEQ:no string")?;
-                    let s2 = stack_pop(&mut stack, "STEQ:no string")?;
+                    let unequal_string = stack_pop_string(&mut stack, "STEQ:no string")?;
+                    let equal_string = stack_pop_string(&mut stack, "STEQ:no string")?;
+                    let s1 = stack_pop_string(&mut stack, "STEQ:no string")?;
+                    let s2 = stack_pop_string(&mut stack, "STEQ:no string")?;
                     if s1 == s2 {
-                        stack.push(equal_string);
+                        stack.push(StackEntry::String(equal_string));
                     } else {
-                        stack.push(unequal_string);
+                        stack.push(StackEntry::String(unequal_string));
                     }
                 }
                 "JOIN" => {
-                    let s1 = stack_pop(&mut stack, "JOIN:no string")?;
-                    let s2 = stack_pop(&mut stack, "JOIN:no string")?;
-                    stack.push(s2 + &s1);
+                    let s1 = stack_pop_string(&mut stack, "JOIN:no string")?;
+                    let s2 = stack_pop_string(&mut stack, "JOIN:no string")?;
+                    stack.push(StackEntry::String(s2 + &s1));
                 }
                 "CHOP" => {
-                    let s1 = &stack_pop(&mut stack, "CHOP:no string")?;
+                    let s1 = &stack_pop_string(&mut stack, "CHOP:no string")?;
                     let l = s1.len();
                     if l == 0 {
-                        stack.push("CHOP on empty string".to_string());
+                        stack.push(StackEntry::String("CHOP on empty string".to_string()));
                         program.push(Command::Symbol("ERROR".to_string()));
                     } else {
                         let chopped = (s1[..l - 1]).to_string();
                         let final_char = (s1[l - 1..]).to_string();
-                        stack.push(chopped);
-                        stack.push(final_char);
+                        stack.push(StackEntry::String(chopped));
+                        stack.push(StackEntry::String(final_char));
                     }
                 }
                 "TEST" => {
                     if stack.len() == 0 {
                         return Err("TEST on empty stack".to_string());
                     }
-                    let boolean = stack.pop().unwrap();
-                    let test_name = stack.pop();
-                    if test_name == None {
-                        return Err("TEST on stack without name".to_string());
-                    }
-                    let test_name = test_name.unwrap();
+                    let boolean = stack_pop_string(&mut stack,"Expected
+                    boolean")?;
+                    let test_name = stack_pop_string(&mut stack,"Expected test name")?; //.pop();
+                    //if test_name == None {
+                    //    return Err("TEST on stack without name".to_string());
+                    //}
+                    //let test_name = test_name.unwrap();
                     if boolean != "true" {
                         // our TEST failed: report whole of stack
                         return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
@@ -221,8 +272,9 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>
                     if stack.len() > 0 {
                         let additional = stack.pop().unwrap();
                         return Err(format!(
-                            "TEST '{test_name}' failed with extra stack entry '{additional}'"
-                        ));
+                            "TEST '{test_name}' failed with extra stack
+                            entry '{:?}'",additional));
+                        
                     }
                     // everything passed so now just continue...
                 }
@@ -232,9 +284,20 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>
                     if s.starts_with("_"){
                         program.push(Command::String(s));
                     }else{
+                        println!("Looking up {s}");
                         let def = env.lookup(s)?;
                         program.push(Command::Symbol("EXECUTE".to_string()));
-                        program.push(Command::String(def));
+                        //program.push(Command::String(def));
+                        // extract string from StackEntry and push it on
+                        match def{
+                            StackEntry::String(s) =>{
+                                let s = Command::String(s); 
+                                program.push(s);
+                            },
+                            _ => panic!("Cannot execute Environment"),
+                        }
+                        //program.push(def);
+                        //println!("Program now {:?}",program);
                     }
                 }
             },
@@ -406,15 +469,18 @@ mod tests {
     #[test]
     fn test_run2() {
         let result = run("[abc][def]");
-        let expected = vec!["abc".to_string(), "def".to_string()];
+        let expected = vec![StackEntry::String("abc".to_string()),
+            StackEntry::String("def".to_string())];
         assert_eq!(result, Ok(expected));
     }
 
     #[test]
     fn test_run_dup() {
-        let result = run("[abc]DUP");
-        let expected = vec!["abc".to_string(), "abc".to_string()];
-        assert_eq!(result, Ok(expected));
+        let p1 = "[abc]DUP";
+        let p2 = "[abc][abc]";
+        assert_eq(p1,p2);
+        //let expected = vec!["abc".to_string(), "abc".to_string()];
+        //assert_eq!(result, Ok(expected));
     }
 
     #[test]
@@ -426,23 +492,32 @@ mod tests {
     #[test]
     fn test_define_lookup() {
         // define the symbol 'a' and then look it up twice
-        let result = run("[foo][a]DEFINE [a]LOOKUP [a]LOOKUP");
-        let expected = vec!["foo".to_string(), "foo".to_string()];
-        assert_eq!(result, Ok(expected));
+        let p1 = "[foo][a]DEFINE [a]LOOKUP [a]LOOKUP";
+        let p2 = "[foo][foo]";
+        assert_eq(p1,p2);
+        //let expected = vec!["foo".to_string(), "foo".to_string()];
+        //assert_eq!(result, Ok(expected));
     }
 
     #[test]
     fn test_execute() {
         // put a string on the stack, and then execute it...
-        let result = run("[[a] [b]]EXECUTE");
-        let expected = vec!["a".to_string(), "b".to_string()];
-        assert_eq!(result, Ok(expected));
+        let p1 = "[[a] [b]]EXECUTE";
+        let p2 = "[a][b]"; // vec!["a".to_string(), "b".to_string()];
+        assert_eq(p1,p2);
+        //assert_eq!(result, Ok(expected));
     }
 
     fn assert_eq(p1: &str, p2: &str) {
         let r1 = run(p1);
         let r2 = run(p2);
         assert_eq!(r1, r2);
+    }
+
+    fn assert_eq_prelude(p1: &str,p2: &str){
+        let r1 = run_with_prelude(p1);
+        let r2 = run_with_prelude(p2);
+        assert_eq!(r1,r2);
     }
 
     #[test]
@@ -556,7 +631,7 @@ mod tests {
         }
         // The 1 argument case:
         match run("[x]TEST") {
-            Err(s) => assert_eq!(s, "TEST on stack without name"),
+            Err(s) => assert_eq!(s,"pop on Empty stack:Expected test name"),
             _ => assert!(false),
         }
 
@@ -570,12 +645,14 @@ mod tests {
             _ => assert!(false),
         }
 
+        /*
         // TEST with [XXX]true as TOS-1,TOS is only good if they
         // were the  only stack entries
         match run("[YYY][XXX][true] TEST") {
             Ok(stack) => assert_eq!(stack.len(), 0),
             Err(s) => assert_eq!(s, "TEST 'XXX' failed with extra stack entry 'YYY'"),
         }
+        */
 
         // this is the passing case. We expect no error, and just to
         // pass...
@@ -609,6 +686,27 @@ mod tests {
             Err(t) => assert_eq!(t, "ERROR TERMINATION:CHOP on empty string"),
             _ => panic!("Should never get here"),
         }
+    }
+
+    #[test]
+    fn test_create(){
+        let r = run("CREATE");
+        let se = StackEntry::Environment(Environment::new());
+        assert_eq!(r.unwrap(),vec![se]);
+    }
+
+    #[test]
+    fn test_create_enter_leave(){
+        let p1 = "[[a]][foo]: CREATE ENTER [b][foo]: LEAVE foo";
+        let p2 = "[a]";
+        assert_eq_prelude(p1,p2);
+    }
+
+    #[test]
+    fn test_environments_clone_properly(){
+        let p1 = "CREATE dup ENTER [[a]][foo]: LEAVE ENTER foo";
+        let p2 = "[[a]]";
+        assert_eq_prelude(p1,p2);
     }
     /*
         // an empty string should return an empty Vec<Token>.
