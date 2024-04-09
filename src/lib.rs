@@ -39,20 +39,20 @@ impl Environment {
         }
     }
 
-    fn child_get(self) -> Environment {
+    fn child_get(self) -> Self {
         let mut new_env = Self::new();
         new_env.parent = Some(Box::new(self));
         new_env
     }
 
-    fn parent_get(self) -> Result<Environment, String> {
+    fn parent_get(self) -> Result<Self, String> {
         if self.parent.is_none() {
             return Err("Cannot get parent environment".to_string());
         }
         Ok(*self.parent.unwrap())
     }
 
-    fn assign_parent(&mut self,parent:Environment){
+    fn assign_parent(&mut self,parent:Self){
         self.parent = Some(Box::new(parent));
     }
 
@@ -192,12 +192,12 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "EXECUTE" => {
                     let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
                     let mut cmds = parse(&subprogram)?;
-                    program.push(Command::Symbol("LEAVE".to_string()));
+                    program.push(Command::Symbol("PARENT".to_string()));
                     cmds.reverse();
                     program.extend(cmds);
-                    program.push(Command::Symbol("ENTER".to_string()));
-                    program.push(Command::Symbol("CREATE".to_string()));
+                    program.push(Command::Symbol("CHILD".to_string()));
                 }
+                /*
                 "CREATE" => {
                     let e = StackEntry::Environment(Environment::new());
                     stack.push(e);
@@ -212,9 +212,9 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                     }
                 },
                 "LEAVE" => env = env.parent_get()?,
-
-                "xCHILD" => env = env.child_get(),
-                "xPARENT" => env = env.parent_get()?,
+                */
+                "CHILD" => env = env.child_get(),
+                "PARENT" => env = env.parent_get()?,
                 "ERROR" => match stack.len() {
                     0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
                     _ => {
@@ -688,6 +688,7 @@ mod tests {
         }
     }
 
+    /*
     #[test]
     fn test_create(){
         let r = run("CREATE");
@@ -695,6 +696,7 @@ mod tests {
         assert_eq!(r.unwrap(),vec![se]);
     }
 
+    
     #[test]
     fn test_create_enter_leave(){
         let p1 = "[[a]][foo]: CREATE ENTER [b][foo]: LEAVE foo";
@@ -702,13 +704,14 @@ mod tests {
         assert_eq_prelude(p1,p2);
     }
 
+    
     #[test]
     fn test_environments_clone_properly(){
         let p1 = "CREATE dup ENTER [[a]][foo]: LEAVE ENTER foo";
         let p2 = "[[a]]";
         assert_eq_prelude(p1,p2);
     }
-    /*
+    
         // an empty string should return an empty Vec<Token>.
         #[test]
         fn test_empty_string(){

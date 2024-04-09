@@ -17,7 +17,7 @@
 
     [ for brevity, we define ':' to be DEFINE ];
     
-    [LEAVE DEFINE CREATE ENTER][:]DEFINE
+    [PARENT DEFINE CHILD][:]DEFINE
 
 
     [ the following 'define' gives us a delayed-lookup ];
