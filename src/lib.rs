@@ -209,7 +209,7 @@ fn prelude() -> String {
     [reverse3] [abc]reverse [cba]eq TEST 
 
 
-    [implement zero as the empty string];
+    [implement zero as an empty string]; 
     [[]][nat_0]:
 
     [ nat_equals is simply eq : ];
@@ -482,10 +482,14 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Vec<String>
                 }
 
                 _ => {
-                    // if s exists as a string, fetch it and execute it
-                    let def = env.lookup(s)?;
-                    program.push(Command::Symbol("EXECUTE".to_string()));
-                    program.push(Command::String(def));
+                    // stop auto_exection on underscore...
+                    if s.starts_with("_"){
+                        program.push(Command::String(s));
+                    }else{
+                        let def = env.lookup(s)?;
+                        program.push(Command::Symbol("EXECUTE".to_string()));
+                        program.push(Command::String(def));
+                    }
                 }
             },
         }
