@@ -86,6 +86,7 @@ impl Environment {
         self.map.insert(key, value);
     }
 
+    // how deeply nested is this environment ?
     fn depth(&self) -> u64 {
         if self.parent.is_none() {
             return 1;
@@ -744,5 +745,12 @@ mod tests {
         let p1 = "CREATE dup ENTER [[a]][foo]: LEAVE ENTER foo";
         let p2 = "[a]";
         assert_eq_prelude(p1, p2);
+    }
+
+    #[test]
+    fn test_environment_usage(){
+        let p1 = "CREATE [e]: e [[bar]][foo]: LEAVE e foo";
+        let p2 = "[[bar]]";
+        assert_eq_prelude(p1,p2);
     }
 }
