@@ -17,14 +17,16 @@
 
     [ for brevity, we define ':' to be DEFINE ];
     
-    [PARENT DEFINE CHILD][:]DEFINE
+    [LEAVE DEFINE CREATE ENTER][:]DEFINE
 
 
     [ the following 'define' gives us a delayed-lookup ];
-   [
+[
+    [
        [var]: [value]:
        [[value]?] [var]?:
-   ][&]: 
+   ][&]:
+]; 
 
     [ nicer to write '?' rather than 'LOOKUP' ];
     [LOOKUP][?]:

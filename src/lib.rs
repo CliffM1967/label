@@ -67,7 +67,7 @@ impl Environment {
     }
 
     fn parent_get(&self) -> Result<SharedEnvironment, String> {
-        println!("parent_get called with depth {}", self.depth());
+        //println!("parent_get called with depth {}", self.depth());
         if self.parent.is_none() {
             return Err("Cannot get parent environment".to_string());
         }
@@ -252,13 +252,14 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
+        //println!("{:?} ",cmd);
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
                 "SHOW" => println!("Current env is {:?}", env),
                 "DUP" => {
                     //let tos = stack_pop_string(&mut stack, "Empty stack for DUP")?;
-                    println!("DUPPING");
+                    //println!("DUPPING");
                     let tos1 = stack.pop();
                     if tos1.is_none() {
                         return Err("Empty".to_string());
@@ -288,10 +289,11 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "EXECUTE" => {
                     let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
                     let mut cmds = parse(&subprogram)?;
-                    program.push(Command::Symbol("ENTER".to_string()));
+                    program.push(Command::Symbol("LEAVE".to_string()));
                     cmds.reverse();
                     program.extend(cmds);
-                    program.push(Command::Symbol("LEAVE".to_string()));
+                    program.push(Command::Symbol("ENTER".to_string()));
+                    program.push(Command::Symbol("CREATE".to_string()));
                 },
                 "CREATE" => {
                     let se = StackEntry::Environment(Environment::new_shared());
@@ -304,38 +306,27 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                     //assert!((*child.borrow()).parent_get().unwrap()==get_env(se.clone()));
                     //  want se.parent to be env
                     se.clone().borrow_mut().assign_parent(env.clone());
-                    println!("env depth {}", env.borrow().depth());
-                    println!("se depth {}", se.borrow().depth());
-                    println!(
-                        "se contains 'foo'
-                    {}",
-                        se.borrow().contains("foo".to_string())
-                    );
-                    println!(
-                        "env contains 'foo'
-                    {}",
-                        env.borrow().contains("foo".to_string())
-                    );
+                    //println!("env depth {}", env.borrow().depth());
+                    //println!("se depth {}", se.borrow().depth());
+                    //println!(
+                    //    "se contains 'foo'
+                    //{}",
+                    //    se.borrow().contains("foo".to_string())
+                    //
+                    //println!(
+                    //    "env contains 'foo'
+                    //}",
+                    //    env.borrow().contains("foo".to_string())
+                    //);
                     //return Ok(stack);
                     env = se; //.clone();
                 },
                 "LEAVE" => {
-                    println!(
-                        "LEAVE:env contains 'foo'
-                    {}",
-                        env.borrow().contains("foo".to_string())
-                    );
-                    println!("LEAVE env depth {}", env.borrow().depth());
                     let e;
                     {
                         e = env.borrow().parent_get()?
                     };
                     env = e;
-                    println!(
-                        "LEAVE2:env contains 'foo'
-                    {}",
-                        env.borrow().contains("foo".to_string())
-                    );
                 },
                 
                 "xCHILD" => env = env.clone().borrow().child_get(),
@@ -590,9 +581,9 @@ mod tests {
         assert_eq!(result, Ok(expected));
     }
 
-    /*
+    
     #[test]
-    #[ignore]
+    //#[ignore]
     fn test_run2() {
         let result = run("[abc][def]");
         let expected = vec![
@@ -601,7 +592,7 @@ mod tests {
         ];
         assert_eq!(result, Ok(expected));
     }
-    */
+    
 
     #[test]
     fn test_run_dup() {
@@ -613,7 +604,6 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
     fn test_dup_error() {
         let result = run("DUP");
         assert!(result.is_err());
@@ -834,18 +824,16 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
     fn test_environments_clone_properly() {
         let p1 = "CREATE [e]: [e]? ENTER [[a]][foo]: LEAVE [e]?ENTER foo";
-        let p2 = "[[a]]";
+        let p2 = "[a]";
         assert_eq_prelude(p1, p2);
     }
 
     #[test]
-    //#[ignore]
     fn test_environments_clone_properly2() {
         let p1 = "CREATE dup ENTER [[a]][foo]: LEAVE ENTER foo";
-        let p2 = "[[a]]";
+        let p2 = "[a]";
         assert_eq_prelude(p1, p2);
     }
     /*
