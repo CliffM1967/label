@@ -15,8 +15,11 @@ The symbols will be alphanumeric, and the underscore character.
 Ignoring whitespace, anything else will be a single-char symbol.
 */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{stderr, stdout, Write};
+use std::mem::replace;
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -24,11 +27,22 @@ pub enum Token {
     Symbol(String),
 }
 
-#[derive(Debug,Clone,PartialEq)]
+type SharedStackEntry = Rc<RefCell<StackEntry>>;
+type SharedEnvironment = Rc<RefCell<Environment>>;
+
+#[derive(Debug, Clone, PartialEq)]
 struct Environment {
-    map: HashMap<String, StackEntry>,
-    parent: Option<Box<Environment>>,
+    map: HashMap<String, SharedStackEntry>,
+    parent: Option<Box<SharedEnvironment>>,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StackEntry {
+    String(String),
+    Environment(SharedEnvironment),
+}
+
+type Stack = Vec<SharedStackEntry>;
 
 impl Environment {
     fn new() -> Self {
@@ -39,46 +53,60 @@ impl Environment {
         }
     }
 
-    fn child_get(self) -> Self {
-        let mut new_env = Self::new();
-        new_env.parent = Some(Box::new(self));
-        new_env
+    fn new_shared() -> SharedEnvironment {
+        Rc::new(RefCell::new(Self::new()))
     }
 
-    fn parent_get(self) -> Result<Self, String> {
+    fn child_get(&self) -> SharedEnvironment {
+        let mut new_env = Self::new_shared();
+        let e = self.clone(); //Rc::new(RefCell::new(self));
+        let e = Rc::new(RefCell::new(e));
+        new_env.borrow_mut().parent = Some(Box::new(e));
+        new_env
+        //Rc::new(RefCell::new(new_env))
+    }
+
+    fn parent_get(&self) -> Result<SharedEnvironment, String> {
+        println!("parent_get called with depth {}", self.depth());
         if self.parent.is_none() {
             return Err("Cannot get parent environment".to_string());
         }
-        Ok(*self.parent.unwrap())
+        let parent = self.parent.clone().unwrap();
+        return Ok(*parent);
+        Ok(*(self.parent.as_ref().unwrap().as_ref()))
+        //Ok((*self.parent.clone()).unwrap())
+        //Ok(Rc::new(RefCell::new(*self.parent.unwrap())))
     }
 
-    fn assign_parent(&mut self,parent:Self){
-        self.parent = Some(Box::new(parent));
+    fn assign_parent(&mut self, parent: SharedEnvironment) {
+        self.parent = Some(Box::new(parent.clone()));
     }
 
-    fn define(&mut self, key: String, value: StackEntry) {
+    fn define(&mut self, key: String, value: SharedStackEntry) {
         self.map.insert(key, value);
     }
 
-    fn lookup(&self, key: String) -> Result<StackEntry, String> {
+    fn depth(&self) -> u64 {
+        if self.parent.is_none() {
+            return 1;
+        }
+        (self.parent.as_ref().unwrap()).borrow().depth() + 1
+    }
+
+    fn lookup(&self, key: String) -> Result<SharedStackEntry, String> {
         if self.map.contains_key(&key) {
             return Ok(self.map.get(&key).unwrap().clone());
         }
         if self.parent.is_none() {
             return Err(format!("Cannot lookup '{key}'"));
         }
-        self.parent.as_ref().unwrap().lookup(key)
+        (self.parent.as_ref().unwrap()).borrow().lookup(key)
+    }
+
+    fn contains(&self, key: String) -> bool {
+        self.lookup(key).is_ok()
     }
 }
-
-#[derive(Debug,Clone,PartialEq)]
-pub enum StackEntry{
-    String(String),
-    Environment(Environment),
-}
-
-type Stack = Vec<StackEntry>;
-
 
 /* The execution model is that Strings will be pushed onto a stack, while
 commands will "execute" in some manner.
@@ -109,16 +137,55 @@ fn option_to_result<T>(option: Option<T>, message: &str) -> Result<T, String> {
     }
 }
 
-fn stack_pop_string(stack: &mut Stack, message: &str) -> Result<String, String> {
-    match stack.pop(){
-        None => Err(format!("pop on Empty stack:{}",message)),
-        Some(StackEntry::String(s)) => Ok(s),
-        o => {
-            let m = format!("Shouldn't get here:String expected got {:?}",o);
-            panic!("{}",m);
-        },
+impl StackEntry {
+    fn get_string(&self) -> String {
+        match self {
+            Self::String(s) => s.to_string(),
+            _ => panic!("pop expected string"),
+        }
     }
-    //option_to_result(stack.pop(), message)
+
+    fn get_env(&self) -> SharedEnvironment {
+        match self {
+            Self::Environment(e) => e.clone(),
+            _ => panic!("pop expected environment"),
+        }
+    }
+}
+
+fn stack_pop(stack: &mut Stack) -> Result<SharedStackEntry, String> {
+    let sse = stack.pop();
+    match sse {
+        Some(sse) => Ok(sse),
+        _ => Err("Couldn't pop stack".to_string()),
+    }
+}
+
+// extract string from SharedStackEntry
+fn esse(sse: SharedStackEntry) -> String {
+    "".to_string()
+}
+
+fn stack_pop_string(stack: &mut Stack, message: &str) -> Result<String, String> {
+    let sse = stack.pop();
+    if sse.is_none() {
+        return Err("pop on Empty stack:Expected test name".to_string());
+    }
+    let sse = sse.unwrap();
+    let se = sse.borrow();
+    let s = se.get_string();
+    Ok(s)
+}
+
+fn stack_pop_env(stack: &mut Stack, message: &str) -> Result<Rc<RefCell<Environment>>, String> {
+    let sse = stack.pop();
+    if sse.is_none() {
+        return Err("pop on Empty stack:Expected environment".to_string());
+    }
+    let sse = sse.unwrap();
+    let se = sse.borrow();
+    let e = se.get_env();
+    Ok(e)
 }
 
 /*
@@ -129,7 +196,7 @@ Result<bool,String>{
         Some(StackEntry::String(s)) => Ok(s),
         _ => panic!("Shouldn't get here:String expected"),
     }
-    
+
 }
 */
 
@@ -151,6 +218,22 @@ pub fn run_with_prelude(program: &str) -> Result<Stack, String> {
     run_with_passed_prelude(program, prelude())
 }
 
+fn make_sse(se: StackEntry) -> SharedStackEntry {
+    Rc::new(RefCell::new(se))
+}
+
+fn make_sses(s: String) -> SharedStackEntry {
+    make_sse(StackEntry::String(s))
+}
+
+fn get_env(se: SharedStackEntry) -> SharedEnvironment {
+    let se = (*se).borrow_mut();
+    match &*se {
+        StackEntry::Environment(e) => e.clone(),
+        _ => panic!("cannot get environment"),
+    }
+}
+
 // both of the above call this function
 fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, String> {
     // prefix the prelude with a space
@@ -162,7 +245,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
     let mut stack = vec![];
 
     // initialise our environment for DEFINE and LOOKUP
-    let mut env = Environment::new();
+    let mut env = Environment::new_shared();
 
     loop {
         if program.len() == 0 {
@@ -170,51 +253,94 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
         }
         let cmd = program.pop().unwrap();
         match cmd {
-            Command::String(s) => stack.push(StackEntry::String(s)),
+            Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
+                "SHOW" => println!("Current env is {:?}", env),
                 "DUP" => {
-                    let tos = stack_pop_string(&mut stack, "Empty stack for DUP")?;
-                    stack.push(StackEntry::String(tos.clone()));
-                    stack.push(StackEntry::String(tos));
-                }
+                    //let tos = stack_pop_string(&mut stack, "Empty stack for DUP")?;
+                    println!("DUPPING");
+                    let tos1 = stack.pop();
+                    if tos1.is_none() {
+                        return Err("Empty".to_string());
+                    };
+                    let tos1 = tos1.unwrap();
+                    let tos2 = tos1.clone();
+                    stack.push(tos1.clone());
+                    stack.push(tos2.clone());
+                    // debug this problem : make the definition now
+                    //let mut e:SharedEnvironment = get_env(tos1); //.get_env()).borrow_mut();
+                    //e.borrow_mut().define("a".to_string(),make_sses("1".to_string()));
+                    //let e2:SharedEnvironment = get_env(tos2);
+                    //println!("tos1 {:?}",e);
+                    //println!("tos2 {:?}",e2);
+                },
                 "DEFINE" => {
                     let key = stack_pop_string(&mut stack, "no key for DEFINE")?;
                     let value = stack.pop().unwrap();
-                    //let value = stack_pop_string(&mut stack, &format!("no value for DEFINE '{key}'"))?;
-                    env.define(key, value);
-                }
+                    env.borrow_mut().define(key, value);
+                },
                 "LOOKUP" => {
                     let key = stack_pop_string(&mut stack, "no key for LOOKUP")?;
-                    let value = env.lookup(key)?;
+                    let value = env.borrow().lookup(key)?;
                     //stack.push(StackEntry::String(value));
                     stack.push(value);
-                }
+                },
                 "EXECUTE" => {
                     let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
                     let mut cmds = parse(&subprogram)?;
-                    program.push(Command::Symbol("PARENT".to_string()));
+                    program.push(Command::Symbol("ENTER".to_string()));
                     cmds.reverse();
                     program.extend(cmds);
-                    program.push(Command::Symbol("CHILD".to_string()));
-                }
-                /*
-                "CREATE" => {
-                    let e = StackEntry::Environment(Environment::new());
-                    stack.push(e);
-                }
-                "ENTER" => {
-                    match stack.pop(){
-                        Some(StackEntry::Environment(mut child)) => {
-                            child.assign_parent(env);
-                            env = child;
-                        },
-                        _ => return Err("No child environment".to_string()),
-                    }
+                    program.push(Command::Symbol("LEAVE".to_string()));
                 },
-                "LEAVE" => env = env.parent_get()?,
-                */
-                "CHILD" => env = env.child_get(),
-                "PARENT" => env = env.parent_get()?,
+                "CREATE" => {
+                    let se = StackEntry::Environment(Environment::new_shared());
+                    stack.push(make_sse(se));
+                },
+
+                "ENTER" => {
+                    let se = get_env(stack.pop().unwrap());
+                    //let mut child = get_env(se.clone()).borrow().child_get();
+                    //assert!((*child.borrow()).parent_get().unwrap()==get_env(se.clone()));
+                    //  want se.parent to be env
+                    se.clone().borrow_mut().assign_parent(env.clone());
+                    println!("env depth {}", env.borrow().depth());
+                    println!("se depth {}", se.borrow().depth());
+                    println!(
+                        "se contains 'foo'
+                    {}",
+                        se.borrow().contains("foo".to_string())
+                    );
+                    println!(
+                        "env contains 'foo'
+                    {}",
+                        env.borrow().contains("foo".to_string())
+                    );
+                    //return Ok(stack);
+                    env = se; //.clone();
+                },
+                "LEAVE" => {
+                    println!(
+                        "LEAVE:env contains 'foo'
+                    {}",
+                        env.borrow().contains("foo".to_string())
+                    );
+                    println!("LEAVE env depth {}", env.borrow().depth());
+                    let e;
+                    {
+                        e = env.borrow().parent_get()?
+                    };
+                    env = e;
+                    println!(
+                        "LEAVE2:env contains 'foo'
+                    {}",
+                        env.borrow().contains("foo".to_string())
+                    );
+                },
+                
+                "xCHILD" => env = env.clone().borrow().child_get(),
+                "xPARENT" => env = env.clone().borrow().parent_get()?,
+                
                 "ERROR" => match stack.len() {
                     0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
                     _ => {
@@ -231,40 +357,43 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                     let s1 = stack_pop_string(&mut stack, "STEQ:no string")?;
                     let s2 = stack_pop_string(&mut stack, "STEQ:no string")?;
                     if s1 == s2 {
-                        stack.push(StackEntry::String(equal_string));
+                        stack.push(make_sses(equal_string));
                     } else {
-                        stack.push(StackEntry::String(unequal_string));
+                        stack.push(make_sses(unequal_string));
                     }
-                }
+                },
                 "JOIN" => {
                     let s1 = stack_pop_string(&mut stack, "JOIN:no string")?;
                     let s2 = stack_pop_string(&mut stack, "JOIN:no string")?;
-                    stack.push(StackEntry::String(s2 + &s1));
-                }
+                    stack.push(make_sses(s2 + &s1));
+                },
                 "CHOP" => {
                     let s1 = &stack_pop_string(&mut stack, "CHOP:no string")?;
                     let l = s1.len();
                     if l == 0 {
-                        stack.push(StackEntry::String("CHOP on empty string".to_string()));
+                        stack.push(make_sses("CHOP on empty string".to_string()));
                         program.push(Command::Symbol("ERROR".to_string()));
                     } else {
                         let chopped = (s1[..l - 1]).to_string();
                         let final_char = (s1[l - 1..]).to_string();
-                        stack.push(StackEntry::String(chopped));
-                        stack.push(StackEntry::String(final_char));
+                        stack.push(make_sses(chopped));
+                        stack.push(make_sses(final_char));
                     }
-                }
+                },
                 "TEST" => {
                     if stack.len() == 0 {
                         return Err("TEST on empty stack".to_string());
                     }
-                    let boolean = stack_pop_string(&mut stack,"Expected
-                    boolean")?;
-                    let test_name = stack_pop_string(&mut stack,"Expected test name")?; //.pop();
-                    //if test_name == None {
-                    //    return Err("TEST on stack without name".to_string());
-                    //}
-                    //let test_name = test_name.unwrap();
+                    let boolean = stack_pop_string(
+                        &mut stack,
+                        "Expected
+                    boolean",
+                    )?;
+                    let test_name = stack_pop_string(&mut stack, "Expected test name")?; //.pop();
+                                                                                         //if test_name == None {
+                                                                                         //    return Err("TEST on stack without name".to_string());
+                                                                                         //}
+                                                                                         //let test_name = test_name.unwrap();
                     if boolean != "true" {
                         // our TEST failed: report whole of stack
                         return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
@@ -273,35 +402,30 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                         let additional = stack.pop().unwrap();
                         return Err(format!(
                             "TEST '{test_name}' failed with extra stack
-                            entry '{:?}'",additional));
-                        
+                            entry '{:?}'",
+                            additional
+                        ));
                     }
                     // everything passed so now just continue...
-                }
+                },
 
                 _ => {
                     // stop auto_exection on underscore...
-                    if s.starts_with("_"){
+                    if s.starts_with("_") {
                         program.push(Command::String(s));
-                    }else{
-                        println!("Looking up {s}");
-                        let def = env.lookup(s)?;
+                    } else {
+                        //println!("Looking up {s}");
+                        let def = env.borrow().lookup(s)?;
                         program.push(Command::Symbol("EXECUTE".to_string()));
                         //program.push(Command::String(def));
                         // extract string from StackEntry and push it on
-                        match def{
-                            StackEntry::String(s) =>{
-                                let s = Command::String(s); 
-                                program.push(s);
-                            },
-                            _ => panic!("Cannot execute Environment"),
-                        }
-                        //program.push(def);
-                        //println!("Program now {:?}",program);
+                        //let s = *def.borrow().get_string();
+                        let c = Command::String(def.borrow().get_string());
+                        program.push(c);
                     }
-                }
+                },
             },
-        }
+        };
     }
 }
 
@@ -466,24 +590,30 @@ mod tests {
         assert_eq!(result, Ok(expected));
     }
 
+    /*
     #[test]
+    #[ignore]
     fn test_run2() {
         let result = run("[abc][def]");
-        let expected = vec![StackEntry::String("abc".to_string()),
-            StackEntry::String("def".to_string())];
+        let expected = vec![
+            SharedStackEntry::String("abc".to_string()),
+            SharedStackEntry::String("def".to_string()),
+        ];
         assert_eq!(result, Ok(expected));
     }
+    */
 
     #[test]
     fn test_run_dup() {
         let p1 = "[abc]DUP";
         let p2 = "[abc][abc]";
-        assert_eq(p1,p2);
+        assert_eq(p1, p2);
         //let expected = vec!["abc".to_string(), "abc".to_string()];
         //assert_eq!(result, Ok(expected));
     }
 
     #[test]
+    //#[ignore]
     fn test_dup_error() {
         let result = run("DUP");
         assert!(result.is_err());
@@ -494,7 +624,7 @@ mod tests {
         // define the symbol 'a' and then look it up twice
         let p1 = "[foo][a]DEFINE [a]LOOKUP [a]LOOKUP";
         let p2 = "[foo][foo]";
-        assert_eq(p1,p2);
+        assert_eq(p1, p2);
         //let expected = vec!["foo".to_string(), "foo".to_string()];
         //assert_eq!(result, Ok(expected));
     }
@@ -504,7 +634,7 @@ mod tests {
         // put a string on the stack, and then execute it...
         let p1 = "[[a] [b]]EXECUTE";
         let p2 = "[a][b]"; // vec!["a".to_string(), "b".to_string()];
-        assert_eq(p1,p2);
+        assert_eq(p1, p2);
         //assert_eq!(result, Ok(expected));
     }
 
@@ -514,10 +644,10 @@ mod tests {
         assert_eq!(r1, r2);
     }
 
-    fn assert_eq_prelude(p1: &str,p2: &str){
+    fn assert_eq_prelude(p1: &str, p2: &str) {
         let r1 = run_with_prelude(p1);
         let r2 = run_with_prelude(p2);
-        assert_eq!(r1,r2);
+        assert_eq!(r1, r2);
     }
 
     #[test]
@@ -631,7 +761,7 @@ mod tests {
         }
         // The 1 argument case:
         match run("[x]TEST") {
-            Err(s) => assert_eq!(s,"pop on Empty stack:Expected test name"),
+            Err(s) => assert_eq!(s, "pop on Empty stack:Expected test name"),
             _ => assert!(false),
         }
 
@@ -688,30 +818,38 @@ mod tests {
         }
     }
 
-    /*
     #[test]
-    fn test_create(){
+    fn test_create() {
         let r = run("CREATE");
-        let se = StackEntry::Environment(Environment::new());
-        assert_eq!(r.unwrap(),vec![se]);
+        let se = StackEntry::Environment(Environment::new_shared());
+        let sse = make_sse(se);
+        assert_eq!(r.unwrap(), vec![sse]);
     }
 
-    
     #[test]
-    fn test_create_enter_leave(){
+    fn test_create_enter_leave() {
         let p1 = "[[a]][foo]: CREATE ENTER [b][foo]: LEAVE foo";
         let p2 = "[a]";
-        assert_eq_prelude(p1,p2);
+        assert_eq_prelude(p1, p2);
     }
 
-    
     #[test]
-    fn test_environments_clone_properly(){
+    //#[ignore]
+    fn test_environments_clone_properly() {
+        let p1 = "CREATE [e]: [e]? ENTER [[a]][foo]: LEAVE [e]?ENTER foo";
+        let p2 = "[[a]]";
+        assert_eq_prelude(p1, p2);
+    }
+
+    #[test]
+    //#[ignore]
+    fn test_environments_clone_properly2() {
         let p1 = "CREATE dup ENTER [[a]][foo]: LEAVE ENTER foo";
         let p2 = "[[a]]";
-        assert_eq_prelude(p1,p2);
+        assert_eq_prelude(p1, p2);
     }
-    
+    /*
+
         // an empty string should return an empty Vec<Token>.
         #[test]
         fn test_empty_string(){
