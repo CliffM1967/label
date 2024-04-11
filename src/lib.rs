@@ -60,6 +60,16 @@ impl Environment {
         }
     }
 
+    fn to_string(&self)->String{
+        let mut r = vec![];
+        r.push("<Env{".to_string());
+        for key in self.map.keys(){
+            r.push(format!("{key} "));
+        }
+        r.push("}>".to_string());
+        r.join("")
+    }
+
     fn new_shared() -> SharedEnvironment {
         Rc::new(RefCell::new(Self::new()))
     }
@@ -126,7 +136,17 @@ fn option_to_result<T>(option: Option<T>, message: &str) -> Result<T, String> {
     }
 }
 
+
 impl StackEntry {
+    
+    fn to_string(&self)->String{
+        match self{
+            StackEntry::String(s) => format!("\"{s}\""),
+            StackEntry::Environment(e) => e.borrow().to_string(), 
+        }
+    }   
+
+
     fn get_string(&self) -> String {
         match self {
             Self::String(s) => s.to_string(),
@@ -241,18 +261,32 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "CHOP" => run_chop(&mut program, &mut stack)?,
                 "TEST" => run_test(&mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
-                _ => run_auto(env.clone(), &mut program, s)?,
+                _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
             },
         }
     }
 }
 
-fn run_auto(env: SharedEnvironment, program: &mut Program, s: String) -> Result<(), String> {
+fn run_auto(env: SharedEnvironment, 
+    program: &mut Program, 
+    s: String,stack:&mut Stack) -> Result<(),String> {
+    // lookup s in the current environment
     let def = env.borrow().lookup(s)?;
-    let c = Command::String(def.borrow().get_string());
-    program.push(Command::Symbol("EXECUTE".to_string()));
-    program.push(c);
-    Ok(())
+    // borrow the value through the Rc<RefCell<>> wrapper
+    let bdef = def.borrow();
+    // now we can handle the two cases
+    match &*bdef{
+        StackEntry::String(s) => {
+            let command = Command::String(s.to_string()); 
+            program.push(Command::Symbol("EXECUTE".to_string()));
+            program.push(command);
+            return Ok(())
+        },
+        StackEntry::Environment(_) =>{
+            stack.push(def.clone());
+            return Ok(()) 
+        }
+    }
 }
 
 fn run_test(stack: &mut Stack) -> Result<(), String> {
@@ -379,6 +413,21 @@ fn run_join(stack: &mut Stack) -> Result<(), String> {
     stack.push(make_sses(s2 + &s1));
     Ok(())
 }
+
+
+pub fn stack_to_string(stack:Stack)->String{
+    let mut r = vec![];
+    r.push("[ ".to_string());
+    let mut sr = vec![];
+    for e in stack{
+        sr.push(format!("{}",e.borrow().to_string()));
+    };
+    r.push(sr.join(", "));
+    
+    r.push(" ]".to_string());
+    r.join("")
+}
+
 
 fn is_symbol_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
@@ -768,8 +817,15 @@ mod tests {
 
     #[test]
     fn test_environment_usage() {
-        let p1 = "CREATE [e]: e [[bar]][foo]: LEAVE e foo";
-        let p2 = "[[bar]]";
+        let p1 = "CREATE [e]: e ENTER [[bar]][foo]: LEAVE e ENTER foo";
+        let p2 = "[bar]";
         assert_eq_prelude(p1, p2);
+    }
+
+    #[test]
+    fn test_formatted_output() {
+        let r = run_with_prelude("[abc][def]").unwrap();
+        println!("{}",stack_to_string(r));
+        assert!(true);
     }
 }

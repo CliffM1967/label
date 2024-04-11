@@ -259,5 +259,21 @@
     [rem5] nat_6 nat_3 nat_remainder nat_0 nat_eq TEST
     [rem6] nat_6 nat_4 nat_remainder nat_2 nat_eq TEST
 
+    [ a simple pair object ];
+
+    [ [second]: [first]:
+      CREATE dup ENTER [obj]: [first]? [first]: [second]? [second]:
+      obj obj LEAVE
+    ][pair_make]:
+ 
+    [ CREATE dup [obj]: ][make]:
+
+    [
+        [first]?
+    ][pair_first]:
+
+    [[second]?
+    ][pair_second]:
+
     assert_empty
     
