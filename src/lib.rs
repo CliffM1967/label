@@ -233,10 +233,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "DEFINE" => env = run_define(env,&mut stack)?, 
                 "LOOKUP" => run_lookup(&env,&mut stack)?,
                 "EXECUTE" =>run_execute(&mut program,&mut stack)?,
-                "CREATE" => {
-                    let se = StackEntry::Environment(Environment::new_shared());
-                    stack.push(make_sse(se));
-                }
+                "CREATE" => run_create(&mut stack),
 
                 "ENTER" => {
                     let se = get_env(stack.pop().unwrap());
@@ -357,7 +354,6 @@ fn run_lookup(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-
 fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
     let subprogram = stack_pop_string(stack, "no string for EXECUTE")?;
     let mut cmds = parse(&subprogram)?;
@@ -367,6 +363,11 @@ fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
     program.push(Command::Symbol("ENTER".to_string()));
     program.push(Command::Symbol("CREATE".to_string()));
     Ok(())
+}
+
+fn run_create(stack:&mut Stack){
+    let se = StackEntry::Environment(Environment::new_shared());
+    stack.push(make_sse(se));
 }
 
 fn is_symbol_char(c: u8) -> bool {
