@@ -234,21 +234,8 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "LOOKUP" => run_lookup(&env,&mut stack)?,
                 "EXECUTE" =>run_execute(&mut program,&mut stack)?,
                 "CREATE" => run_create(&mut stack),
-
-                "ENTER" => {
-                    let se = get_env(stack.pop().unwrap());
-                    //  want se.parent to be env
-                    se.clone().borrow_mut().assign_parent(env.clone());
-                    env = se; 
-                }
-                "LEAVE" => {
-                    let e;
-                    {
-                        e = env.borrow().parent_get()?
-                    };
-                    env = e;
-                }
-
+                "ENTER" => env = run_enter(env,&mut stack)?, 
+                "LEAVE" => env = run_leave(env)?,
                 "xCHILD" => env = env.clone().borrow().child_get(),
                 "xPARENT" => env = env.clone().borrow().parent_get()?,
 
@@ -363,6 +350,22 @@ fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
     program.push(Command::Symbol("ENTER".to_string()));
     program.push(Command::Symbol("CREATE".to_string()));
     Ok(())
+}
+
+fn run_leave(env:SharedEnvironment)->Result<SharedEnvironment,String>{
+    Ok(env.borrow().parent_get()?)
+}
+
+fn run_enter(env:SharedEnvironment,stack:&mut Stack)
+    ->Result<SharedEnvironment,String>{
+    let e = stack.pop();
+    if e == None{
+        return Err("ENTER on empty stack".to_string())
+    }
+    let se = get_env(e.unwrap());
+    //  want se.parent to be env
+    se.clone().borrow_mut().assign_parent(env.clone());
+    return Ok(se); 
 }
 
 fn run_create(stack:&mut Stack){
