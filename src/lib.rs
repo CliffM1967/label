@@ -229,22 +229,8 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
-                "xSHOW" => println!("Current env is {:?}", env),
-                "DUP" => {
-                    let tos1 = stack.pop();
-                    if tos1.is_none() {
-                        return Err("Empty".to_string());
-                    };
-                    let tos1 = tos1.unwrap();
-                    let tos2 = tos1.clone();
-                    stack.push(tos1.clone());
-                    stack.push(tos2.clone());
-                }
-                "DEFINE" => {
-                    let key = stack_pop_string(&mut stack, "no key for DEFINE")?;
-                    let value = stack.pop().unwrap();
-                    env.borrow_mut().define(key, value);
-                }
+                "DUP" => run_dup(&mut stack)?,
+                "DEFINE" => env = run_define(env,&mut stack)?, 
                 "LOOKUP" => {
                     let key = stack_pop_string(&mut stack, "no key for LOOKUP")?;
                     let value = env.borrow().lookup(key)?;
@@ -353,6 +339,27 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             },
         };
     }
+}
+
+fn run_dup(stack:&mut Stack)->Result<(),String>{
+    let tos1 = stack.pop();
+    if tos1.is_none() {
+        return Err("Empty".to_string());
+    };
+    let tos1 = tos1.unwrap();
+    let tos2 = tos1.clone();
+    stack.push(tos1.clone());
+    stack.push(tos2.clone());
+    Ok(())
+}
+
+fn run_define(env:SharedEnvironment,stack:&mut Stack)
+    ->Result<SharedEnvironment,String>{
+
+    let key = stack_pop_string(stack, "no key for DEFINE")?;
+    let value = stack.pop().unwrap();
+    env.borrow_mut().define(key, value);
+    Ok(env)
 }
 
 fn is_symbol_char(c: u8) -> bool {
