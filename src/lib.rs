@@ -66,7 +66,7 @@ impl Environment {
 
     fn child_get(&self) -> SharedEnvironment {
         let mut new_env = Self::new_shared();
-        let parent = self.clone(); 
+        let parent = self.clone();
         let parent = Rc::new(RefCell::new(parent));
         new_env.borrow_mut().assign_parent(parent);
         new_env
@@ -113,14 +113,12 @@ impl Environment {
     }
 }
 
-
 fn print_stderr(s: &str) {
     eprintln!("{s}");
     let _ = stderr().flush();
 }
 
-
-// convert an Option into a result with a given error string
+// convert an Option<T> into a Result<T,String>  with a given error string
 fn option_to_result<T>(option: Option<T>, message: &str) -> Result<T, String> {
     match option {
         None => Err(message.to_string()),
@@ -151,7 +149,6 @@ fn stack_pop(stack: &mut Stack) -> Result<SharedStackEntry, String> {
         _ => Err("Couldn't pop stack".to_string()),
     }
 }
-
 
 fn stack_pop_string(stack: &mut Stack, message: &str) -> Result<String, String> {
     let sse = stack.pop();
@@ -227,31 +224,30 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
-        //println!("{:?} ",cmd);
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
                 "DUP" => run_dup(&mut stack)?,
-                "DEFINE" => env = run_define(env,&mut stack)?, 
-                "LOOKUP" => run_lookup(&env,&mut stack)?,
-                "EXECUTE" =>run_execute(&mut program,&mut stack)?,
+                "DEFINE" => run_define(&env, &mut stack)?,
+                "LOOKUP" => run_lookup(&env, &mut stack)?,
+                "EXECUTE" => run_execute(&mut program, &mut stack)?,
                 "CREATE" => run_create(&mut stack),
-                "ENTER" => env = run_enter(env,&mut stack)?, 
+                // in ENTER and LEAVE env is re-bound to a new value
+                "ENTER" => env = run_enter(env, &mut stack)?,
                 "LEAVE" => env = run_leave(env)?,
                 "ERROR" => run_error(&mut stack)?,
                 "STEQ" => run_steq(&mut stack)?,
                 "JOIN" => run_join(&mut stack)?,
-                "CHOP" => run_chop(&mut program,&mut stack)?,
-                "TEST" => run_test(&mut stack)?, 
+                "CHOP" => run_chop(&mut program, &mut stack)?,
+                "TEST" => run_test(&mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
-                _ => run_auto(env.clone(),&mut program,s)?,
+                _ => run_auto(env.clone(), &mut program, s)?,
             },
-        };
+        }
     }
 }
 
-fn run_auto(env:SharedEnvironment,program:&mut Program,s:String)
-    ->Result<(),String>{
+fn run_auto(env: SharedEnvironment, program: &mut Program, s: String) -> Result<(), String> {
     let def = env.borrow().lookup(s)?;
     let c = Command::String(def.borrow().get_string());
     program.push(Command::Symbol("EXECUTE".to_string()));
@@ -259,26 +255,28 @@ fn run_auto(env:SharedEnvironment,program:&mut Program,s:String)
     Ok(())
 }
 
-fn run_test(stack:&mut Stack)->Result<(),String>{
+fn run_test(stack: &mut Stack) -> Result<(), String> {
     if stack.len() == 0 {
         return Err("TEST on empty stack".to_string());
     }
-    let boolean = stack_pop_string(stack,"Expected boolean",)?;
-    let test_name = stack_pop_string(stack, "Expected test name")?; 
+    let boolean = stack_pop_string(stack, "Expected boolean")?;
+    let test_name = stack_pop_string(stack, "Expected test name")?;
     if boolean != "true" {
         // our TEST failed: report whole of stack
         return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
     }
     if stack.len() > 0 {
         let additional = stack.pop().unwrap();
-        return Err(format!("TEST '{test_name}' failed with extra stack entry '{:?}'",additional
+        return Err(format!(
+            "TEST '{test_name}' failed with extra stack entry '{:?}'",
+            additional
         ));
     }
     // TEST passed so now just continue...
     Ok(())
 }
 
-fn run_dup(stack:&mut Stack)->Result<(),String>{
+fn run_dup(stack: &mut Stack) -> Result<(), String> {
     let tos1 = stack.pop();
     if tos1.is_none() {
         return Err("Empty".to_string());
@@ -290,23 +288,21 @@ fn run_dup(stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-fn run_define(env:SharedEnvironment,stack:&mut Stack)
-    ->Result<SharedEnvironment,String>{
-
+fn run_define(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
     let key = stack_pop_string(stack, "no key for DEFINE")?;
     let value = stack.pop().unwrap();
     env.borrow_mut().define(key, value);
-    Ok(env)
+    Ok(())
 }
 
-fn run_lookup(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
+fn run_lookup(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
     let key = stack_pop_string(stack, "no key for LOOKUP")?;
     let value = env.borrow().lookup(key)?;
     stack.push(value);
     Ok(())
 }
 
-fn run_execute(program:&mut Program,stack:&mut Stack)->Result<(),String>{
+fn run_execute(program: &mut Program, stack: &mut Stack) -> Result<(), String> {
     let subprogram = stack_pop_string(stack, "no string for EXECUTE")?;
     let mut cmds = parse(&subprogram)?;
     program.push(Command::Symbol("LEAVE".to_string()));
@@ -317,7 +313,7 @@ fn run_execute(program:&mut Program,stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-fn run_steq(stack:&mut Stack)->Result<(),String>{
+fn run_steq(stack: &mut Stack) -> Result<(), String> {
     //  pop all 4 arguments off the stack
     let unequal_string = stack_pop_string(stack, "STEQ:no string")?;
     let equal_string = stack_pop_string(stack, "STEQ:no string")?;
@@ -331,39 +327,38 @@ fn run_steq(stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-fn run_leave(env:SharedEnvironment)->Result<SharedEnvironment,String>{
+fn run_leave(env: SharedEnvironment) -> Result<SharedEnvironment, String> {
     Ok(env.borrow().parent_get()?)
 }
 
-fn run_enter(env:SharedEnvironment,stack:&mut Stack)
-    ->Result<SharedEnvironment,String>{
+fn run_enter(env: SharedEnvironment, stack: &mut Stack) -> Result<SharedEnvironment, String> {
     let e = stack.pop();
-    if e == None{
-        return Err("ENTER on empty stack".to_string())
+    if e == None {
+        return Err("ENTER on empty stack".to_string());
     }
     let se = get_env(e.unwrap());
     //  want se.parent to be env
     se.clone().borrow_mut().assign_parent(env.clone());
-    return Ok(se); 
+    return Ok(se);
 }
 
-fn run_create(stack:&mut Stack){
+fn run_create(stack: &mut Stack) {
     let se = StackEntry::Environment(Environment::new_shared());
     stack.push(make_sse(se));
 }
 
-fn run_error(stack:&mut Stack)->Result<(),String>{
+fn run_error(stack: &mut Stack) -> Result<(), String> {
     match stack.len() {
         0 => Err("ERROR TERMINATION:Empty Stack".to_string()),
         _ => {
             let text = stack_pop_string(stack, "never fails")?;
             let r = format!("ERROR TERMINATION:{text}");
             Err(r)
-        },
+        }
     }
 }
 
-fn run_chop(program:&mut Program,stack:&mut Stack)->Result<(),String>{
+fn run_chop(program: &mut Program, stack: &mut Stack) -> Result<(), String> {
     let s = &stack_pop_string(stack, "CHOP:no string")?;
     let l = s.len();
     if l == 0 {
@@ -378,7 +373,7 @@ fn run_chop(program:&mut Program,stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-fn run_join(stack:&mut Stack)->Result<(),String>{
+fn run_join(stack: &mut Stack) -> Result<(), String> {
     let s1 = stack_pop_string(stack, "JOIN:no string")?;
     let s2 = stack_pop_string(stack, "JOIN:no string")?;
     stack.push(make_sses(s2 + &s1));
@@ -546,7 +541,6 @@ mod tests {
         assert_eq!(result, Ok(expected));
     }
 
-
     #[test]
     fn test_run_dup() {
         let p1 = "[abc]DUP";
@@ -572,7 +566,7 @@ mod tests {
     fn test_execute() {
         // put a string on the stack, and then execute it...
         let p1 = "[[a] [b]]EXECUTE";
-        let p2 = "[a][b]"; 
+        let p2 = "[a][b]";
         assert_eq(p1, p2);
     }
 
@@ -676,7 +670,6 @@ mod tests {
         }
     }
 
-
     #[test]
     // the TEST primitive.
     // the stack looks like [XXX][T] or [XXX][F] where XXX is the
@@ -774,9 +767,9 @@ mod tests {
     }
 
     #[test]
-    fn test_environment_usage(){
+    fn test_environment_usage() {
         let p1 = "CREATE [e]: e [[bar]][foo]: LEAVE e foo";
         let p2 = "[[bar]]";
-        assert_eq_prelude(p1,p2);
+        assert_eq_prelude(p1, p2);
     }
 }
