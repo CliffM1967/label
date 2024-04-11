@@ -342,18 +342,14 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                     }
                     // TEST passed so now just continue...
                 }
-
+                // s is a Symbol, so auto-execute if it's defined
                 _ => {
-                    // stop auto_exection on underscore...
-                    if s.starts_with("_") {
-                        program.push(Command::String(s));
-                    } else {
-                        let def = env.borrow().lookup(s)?;
-                        program.push(Command::Symbol("EXECUTE".to_string()));
-                        let c = Command::String(def.borrow().get_string());
-                        program.push(c);
-                    }
-                }
+                    let def = env.borrow().lookup(s)?;
+                    let c = Command::String(def.borrow().get_string());
+                    program.push(Command::Symbol("EXECUTE".to_string()));
+                    program.push(c);
+                    
+                },
             },
         };
     }
