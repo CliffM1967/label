@@ -232,15 +232,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "DUP" => run_dup(&mut stack)?,
                 "DEFINE" => env = run_define(env,&mut stack)?, 
                 "LOOKUP" => run_lookup(&env,&mut stack)?,
-                "EXECUTE" => {
-                    let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
-                    let mut cmds = parse(&subprogram)?;
-                    program.push(Command::Symbol("LEAVE".to_string()));
-                    cmds.reverse();
-                    program.extend(cmds);
-                    program.push(Command::Symbol("ENTER".to_string()));
-                    program.push(Command::Symbol("CREATE".to_string()));
-                }
+                "EXECUTE" =>run_execute(&mut program,&mut stack)?,
                 "CREATE" => {
                     let se = StackEntry::Environment(Environment::new_shared());
                     stack.push(make_sse(se));
@@ -362,6 +354,18 @@ fn run_lookup(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
     let key = stack_pop_string(stack, "no key for LOOKUP")?;
     let value = env.borrow().lookup(key)?;
     stack.push(value);
+    Ok(())
+}
+
+
+fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
+    let subprogram = stack_pop_string(stack, "no string for EXECUTE")?;
+    let mut cmds = parse(&subprogram)?;
+    program.push(Command::Symbol("LEAVE".to_string()));
+    cmds.reverse();
+    program.extend(cmds);
+    program.push(Command::Symbol("ENTER".to_string()));
+    program.push(Command::Symbol("CREATE".to_string()));
     Ok(())
 }
 
