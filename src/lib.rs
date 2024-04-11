@@ -231,11 +231,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             Command::Symbol(s) => match s.as_str() {
                 "DUP" => run_dup(&mut stack)?,
                 "DEFINE" => env = run_define(env,&mut stack)?, 
-                "LOOKUP" => {
-                    let key = stack_pop_string(&mut stack, "no key for LOOKUP")?;
-                    let value = env.borrow().lookup(key)?;
-                    stack.push(value);
-                }
+                "LOOKUP" => run_lookup(&env,&mut stack)?,
                 "EXECUTE" => {
                     let subprogram = stack_pop_string(&mut stack, "no string for EXECUTE")?;
                     let mut cmds = parse(&subprogram)?;
@@ -360,6 +356,13 @@ fn run_define(env:SharedEnvironment,stack:&mut Stack)
     let value = stack.pop().unwrap();
     env.borrow_mut().define(key, value);
     Ok(env)
+}
+
+fn run_lookup(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
+    let key = stack_pop_string(stack, "no key for LOOKUP")?;
+    let value = env.borrow().lookup(key)?;
+    stack.push(value);
+    Ok(())
 }
 
 fn is_symbol_char(c: u8) -> bool {
