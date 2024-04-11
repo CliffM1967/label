@@ -236,18 +236,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "CREATE" => run_create(&mut stack),
                 "ENTER" => env = run_enter(env,&mut stack)?, 
                 "LEAVE" => env = run_leave(env)?,
-                "xCHILD" => env = env.clone().borrow().child_get(),
-                "xPARENT" => env = env.clone().borrow().parent_get()?,
-
-                "ERROR" => match stack.len() {
-                    0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
-                    _ => {
-                        let text = stack_pop_string(&mut stack, "foo")?;
-                        let r = format!("ERROR TERMINATION:{text}");
-                        return Err(r);
-                    }
-                },
-
+                "ERROR" => run_error(&mut stack)?,
                 "STEQ" => {
                     //  pop all 4 arguments off the stack
                     let unequal_string = stack_pop_string(&mut stack, "STEQ:no string")?;
@@ -371,6 +360,18 @@ fn run_enter(env:SharedEnvironment,stack:&mut Stack)
 fn run_create(stack:&mut Stack){
     let se = StackEntry::Environment(Environment::new_shared());
     stack.push(make_sse(se));
+}
+
+fn run_error(stack:&mut Stack)->Result<(),String>{
+    match stack.len() {
+        0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
+        _ => {
+            let text = stack_pop_string(stack, "never fails")?;
+            let r = format!("ERROR TERMINATION:{text}");
+            return Err(r);
+        }
+    };
+    Ok(())
 }
 
 fn is_symbol_char(c: u8) -> bool {
