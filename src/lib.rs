@@ -33,6 +33,8 @@ enum Command {
     String(String),
 }
 
+type Program = Vec<Command>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StackEntry {
     String(String),
@@ -237,69 +239,43 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "ENTER" => env = run_enter(env,&mut stack)?, 
                 "LEAVE" => env = run_leave(env)?,
                 "ERROR" => run_error(&mut stack)?,
-                "STEQ" => {
-                    //  pop all 4 arguments off the stack
-                    let unequal_string = stack_pop_string(&mut stack, "STEQ:no string")?;
-                    let equal_string = stack_pop_string(&mut stack, "STEQ:no string")?;
-                    let s1 = stack_pop_string(&mut stack, "STEQ:no string")?;
-                    let s2 = stack_pop_string(&mut stack, "STEQ:no string")?;
-                    if s1 == s2 {
-                        stack.push(make_sses(equal_string));
-                    } else {
-                        stack.push(make_sses(unequal_string));
-                    }
-                }
-                "JOIN" => {
-                    let s1 = stack_pop_string(&mut stack, "JOIN:no string")?;
-                    let s2 = stack_pop_string(&mut stack, "JOIN:no string")?;
-                    stack.push(make_sses(s2 + &s1));
-                }
-                "CHOP" => {
-                    let s1 = &stack_pop_string(&mut stack, "CHOP:no string")?;
-                    let l = s1.len();
-                    if l == 0 {
-                        stack.push(make_sses("CHOP on empty string".to_string()));
-                        program.push(Command::Symbol("ERROR".to_string()));
-                    } else {
-                        let chopped = (s1[..l - 1]).to_string();
-                        let final_char = (s1[l - 1..]).to_string();
-                        stack.push(make_sses(chopped));
-                        stack.push(make_sses(final_char));
-                    }
-                }
-                "TEST" => {
-                    if stack.len() == 0 {
-                        return Err("TEST on empty stack".to_string());
-                    }
-                    let boolean = stack_pop_string(
-                        &mut stack,
-                        "Expected boolean",)?;
-                    let test_name = stack_pop_string(&mut stack, "Expected test name")?; 
-                    if boolean != "true" {
-                        // our TEST failed: report whole of stack
-                        return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
-                    }
-                    if stack.len() > 0 {
-                        let additional = stack.pop().unwrap();
-                        return Err(format!(
-                            "TEST '{test_name}' failed with extra stack
-                            entry '{:?}'",
-                            additional
-                        ));
-                    }
-                    // TEST passed so now just continue...
-                }
-                // s is a Symbol, so auto-execute if it's defined
-                _ => {
-                    let def = env.borrow().lookup(s)?;
-                    let c = Command::String(def.borrow().get_string());
-                    program.push(Command::Symbol("EXECUTE".to_string()));
-                    program.push(c);
-                    
-                },
+                "STEQ" => run_steq(&mut stack)?,
+                "JOIN" => run_join(&mut stack)?,
+                "CHOP" => run_chop(&mut program,&mut stack)?,
+                "TEST" => run_test(&mut stack)?, 
+                // s is a Symbol, so "auto-execute" if it's defined
+                _ => run_auto(env.clone(),&mut program,s)?,
             },
         };
     }
+}
+
+fn run_auto(env:SharedEnvironment,program:&mut Program,s:String)
+    ->Result<(),String>{
+    let def = env.borrow().lookup(s)?;
+    let c = Command::String(def.borrow().get_string());
+    program.push(Command::Symbol("EXECUTE".to_string()));
+    program.push(c);
+    Ok(())
+}
+
+fn run_test(stack:&mut Stack)->Result<(),String>{
+    if stack.len() == 0 {
+        return Err("TEST on empty stack".to_string());
+    }
+    let boolean = stack_pop_string(stack,"Expected boolean",)?;
+    let test_name = stack_pop_string(stack, "Expected test name")?; 
+    if boolean != "true" {
+        // our TEST failed: report whole of stack
+        return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
+    }
+    if stack.len() > 0 {
+        let additional = stack.pop().unwrap();
+        return Err(format!("TEST '{test_name}' failed with extra stack entry '{:?}'",additional
+        ));
+    }
+    // TEST passed so now just continue...
+    Ok(())
 }
 
 fn run_dup(stack:&mut Stack)->Result<(),String>{
@@ -330,7 +306,7 @@ fn run_lookup(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
     Ok(())
 }
 
-fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
+fn run_execute(program:&mut Program,stack:&mut Stack)->Result<(),String>{
     let subprogram = stack_pop_string(stack, "no string for EXECUTE")?;
     let mut cmds = parse(&subprogram)?;
     program.push(Command::Symbol("LEAVE".to_string()));
@@ -338,6 +314,20 @@ fn run_execute(program:&mut Vec<Command>,stack:&mut Stack)->Result<(),String>{
     program.extend(cmds);
     program.push(Command::Symbol("ENTER".to_string()));
     program.push(Command::Symbol("CREATE".to_string()));
+    Ok(())
+}
+
+fn run_steq(stack:&mut Stack)->Result<(),String>{
+    //  pop all 4 arguments off the stack
+    let unequal_string = stack_pop_string(stack, "STEQ:no string")?;
+    let equal_string = stack_pop_string(stack, "STEQ:no string")?;
+    let s1 = stack_pop_string(stack, "STEQ:no string")?;
+    let s2 = stack_pop_string(stack, "STEQ:no string")?;
+    if s1 == s2 {
+        stack.push(make_sses(equal_string));
+    } else {
+        stack.push(make_sses(unequal_string));
+    };
     Ok(())
 }
 
@@ -364,13 +354,34 @@ fn run_create(stack:&mut Stack){
 
 fn run_error(stack:&mut Stack)->Result<(),String>{
     match stack.len() {
-        0 => return Err("ERROR TERMINATION:Empty Stack".to_string()),
+        0 => Err("ERROR TERMINATION:Empty Stack".to_string()),
         _ => {
             let text = stack_pop_string(stack, "never fails")?;
             let r = format!("ERROR TERMINATION:{text}");
-            return Err(r);
-        }
-    };
+            Err(r)
+        },
+    }
+}
+
+fn run_chop(program:&mut Program,stack:&mut Stack)->Result<(),String>{
+    let s = &stack_pop_string(stack, "CHOP:no string")?;
+    let l = s.len();
+    if l == 0 {
+        stack.push(make_sses("CHOP on empty string".to_string()));
+        program.push(Command::Symbol("ERROR".to_string()));
+    } else {
+        let chopped = (s[..l - 1]).to_string();
+        let final_char = (s[l - 1..]).to_string();
+        stack.push(make_sses(chopped));
+        stack.push(make_sses(final_char));
+    }
+    Ok(())
+}
+
+fn run_join(stack:&mut Stack)->Result<(),String>{
+    let s1 = stack_pop_string(stack, "JOIN:no string")?;
+    let s2 = stack_pop_string(stack, "JOIN:no string")?;
+    stack.push(make_sses(s2 + &s1));
     Ok(())
 }
 
