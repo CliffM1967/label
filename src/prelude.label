@@ -287,17 +287,54 @@
     [ construct a link: link body link_make ];
 
     [pair_make][link_make]:
-    [pair_second][link_entry]:
+    [pair_second][link_object]:
     [pair_first][link_link]:
-    [pair_first linked_list_is_end][link_is_end]:
-[
-[linked_list_end2]linked_list_end [a] link_make link_is_end not TEST
+    [[link_link linked_list_is_end][link_is_end]:];
 
-
-
-    [link_make1] linked_list_end [a] link_make link_body [a] eq TEST
+    [link_make1] linked_list_end [a] link_make link_object [a] eq TEST
     [link_make2] linked_list_end [a] link_make link_link linked_list_is_end TEST
+    [link_make3] linked_list_end [a] link_make linked_list_is_end not TEST
 
-[link_make3] linked_list_end [a] link_make linked_list_is_end not TEST
-];
+
+[ now define list object in terms of linked lists : ];
+    [linked_list_end][list_new]:  
+    [link_make][list_add]:
+    [linked_list_is_end][list_is_empty]:
+    [link_object][list_object]:
+    [link_link][list_next]:
+   
+    [list_new] list_new list_is_empty TEST
+    [list_add] list_new [a] list_add list_object [a] eq TEST
+    [list_add2] list_new [a] list_add list_is_empty false eq TEST  
+
+    [list_add3] list_new [a] list_add [b] list_add list_next list_object [a] eq
+    TEST
+
+[ we might like to pop an item off a list, resulting in a new list and the
+object];
+
+
+    [[list]:
+        [[cannot pop empty list]ERROR]
+        [list list_next list list_object]
+        list list_is_empty if
+    ][list_pop]:
+
+   [list_pop1] list_new [a] list_add list_pop swap pop [a] eq TEST
+   [list_pop2] list_new [a] list_add list_pop pop list_is_empty TEST
+   
+[ finally we want to be able to check if a list contains an item];
+
+    [[object]: [list]:
+        [false]
+        [ [true]
+          [list list_next [object]? list_contains]
+          list list_object [object]? eq if
+        ]
+        list list_is_empty if
+    ][list_contains]:
+
+   [list_contains1] list_new [a] list_contains not TEST
+   [list_contains2] list_new [a] list_add [a] list_contains TEST
+   [list_contains3] list_new [a] list_add [b] list_contains not TEST
 
