@@ -259,7 +259,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "STEQ" => run_steq(&mut stack)?,
                 "JOIN" => run_join(&mut stack)?,
                 "CHOP" => run_chop(&mut program, &mut stack)?,
-                "TEST" => run_test(&mut stack)?,
+                "TEST" => run_test(&env,&mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
                 _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
             },
@@ -270,6 +270,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
 fn run_auto(env: SharedEnvironment, 
     program: &mut Program, 
     s: String,stack:&mut Stack) -> Result<(),String> {
+
     // lookup s in the current environment
     let def = env.borrow().lookup(s)?;
     // borrow the value through the Rc<RefCell<>> wrapper
@@ -289,7 +290,7 @@ fn run_auto(env: SharedEnvironment,
     }
 }
 
-fn run_test(stack: &mut Stack) -> Result<(), String> {
+fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
     if stack.len() == 0 {
         return Err("TEST on empty stack".to_string());
     }
@@ -306,6 +307,11 @@ fn run_test(stack: &mut Stack) -> Result<(), String> {
             additional
         ));
     }
+    
+    if env.borrow().parent!=None{
+        return Err(format!("TEST:Not at outer environment"));
+    }
+    
     // TEST passed so now just continue...
     Ok(())
 }
@@ -325,6 +331,9 @@ fn run_dup(stack: &mut Stack) -> Result<(), String> {
 fn run_define(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
     let key = stack_pop_string(stack, "no key for DEFINE")?;
     let value = stack.pop().unwrap();
+    if env.borrow().map.contains_key(&key){
+        return Err(format!("Attempting re-definition of {key}"));
+    }
     env.borrow_mut().define(key, value);
     Ok(())
 }
@@ -827,5 +836,23 @@ mod tests {
         let r = run_with_prelude("[abc][def]").unwrap();
         println!("{}",stack_to_string(r));
         assert!(true);
+    }
+
+    #[test]
+    fn test_prelude_runs_successfully(){
+        let r = run_with_prelude("");
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_test_inner_environment_failure(){
+        let r = run("CREATE ENTER [this should fail] [true] TEST");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_throws_on_redefinition(){
+        let r = run("[foo][bar]DEFINE [another def][bar]DEFINE");
+        assert!(r.is_err());
     }
 }

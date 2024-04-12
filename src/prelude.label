@@ -20,13 +20,6 @@
     [LEAVE DEFINE CREATE ENTER][:]DEFINE
 
 
-    [ the following 'define' gives us a delayed-lookup ];
-[
-    [
-       [var]: [value]:
-       [[value]?] [var]?:
-   ][&]:
-]; 
 
     [ nicer to write '?' rather than 'LOOKUP' ];
     [LOOKUP][?]:
@@ -119,8 +112,13 @@
     [ nat_equals is simply eq : ];
     [eq][nat_eq]:
 
+    [nat_0_equals] nat_0 nat_0 nat_eq TEST
+
     [implement a successor function: Add one char to a given string];
     [[*] JOIN][nat_succ]:
+
+    [ show that nat_0 and nat_0 nat_succ are different];
+    [nat_succ1] nat_0 nat_succ nat_0 eq not TEST
 
     [implement a few numbers for later use];
     [nat_0 nat_succ][nat_1]:
@@ -129,7 +127,6 @@
     [nat_3 nat_succ][nat_4]:
     [nat_4 nat_succ][nat_5]:
     [nat_5 nat_succ][nat_6]:
-    [nat_4 nat_succ][nat_5]:
 
     [addition is easy -- just JOIN two numbers together];
     [JOIN][nat_add]:
@@ -141,12 +138,12 @@
 
     [ [t]: [[nat_dec called on nat_0] ERROR]
            [[t]? CHOP pop] 
-           [t]? nat_0 eq if
+           [t]? nat_0 nat_eq if
     ][nat_dec]:
 
+    [nat_dec1] nat_1 nat_dec nat_0 nat_eq TEST
+
  
-    [ comparing two nats can be done via eq];
-    [eq][nat_eq]:
 
     [ now consider subtraction: we need repeated decrements];
     [ the base case is 'x 0 sub' should be 'x'];
@@ -161,7 +158,7 @@
     [sub1] nat_1 nat_1 nat_sub nat_0 nat_eq TEST
     [sub2] nat_5 nat_3 nat_sub nat_2 nat_eq TEST
 
-    [ want nat_lt and nat_gt ];
+    [ want nat_lt and nat_gt etc.];
     
     [ [y]: [x]:
         [[true][false][y]? nat_0 eq if]
@@ -199,6 +196,10 @@
         [[i]? nat_dec fib [i]?nat_dec nat_dec fib nat_add]
         [i]? nat_3 nat_lt if
     ][fib]:
+
+    [fib1] nat_1 fib nat_1 nat_eq TEST
+    [fib2] nat_2 fib nat_1 nat_eq TEST
+    [fib4] nat_4 fib nat_3 nat_eq TEST
 
     [ multplication is repeated addition ];
     [ for x*y we have the base case x*0=0 ];
@@ -259,21 +260,25 @@
     [rem5] nat_6 nat_3 nat_remainder nat_0 nat_eq TEST
     [rem6] nat_6 nat_4 nat_remainder nat_2 nat_eq TEST
 
+
     [ a simple pair object ];
 
-    [ [second]: [first]:
-      CREATE dup ENTER [obj]: [first]? [first]: [second]? [second]:
-      obj obj LEAVE
-    ][pair_make]:
- 
-    [ CREATE dup [obj]: ][make]:
-
-    [
-        [first]?
-    ][pair_first]:
-
-    [[second]?
-    ][pair_second]:
-
-    assert_empty
     
+
+[
+    [ [second]: [first]:
+      CREATE dup dup [obj]: ENTER [first]? [first]: [second]? [second]:
+      LEAVE 
+    ][pair_make]:
+
+
+    [ENTER [first]? LEAVE] [pair_first]:
+
+    [ENTER [second]? LEAVE] [pair_second]:
+
+
+    [pair1][1][2]pair_make pair_first [1] eq TEST
+    [pair2][1][2]pair_make pair_second [2] eq TEST
+];
+    assert_empty
+   
