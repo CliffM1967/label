@@ -60,6 +60,10 @@ impl Environment {
         }
     }
 
+    fn equals(&self,another:Self)->bool{
+        self.map == another.map
+    }
+
     fn to_string(&self)->String{
         let mut r = vec![];
         r.push("<Env{".to_string());
@@ -244,6 +248,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
+        //println!("Command {:?}",cmd);
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
@@ -356,17 +361,60 @@ fn run_execute(program: &mut Program, stack: &mut Stack) -> Result<(), String> {
     Ok(())
 }
 
+// Given a stack entry, we want to know if it's a String or
+// SharedEnvironment.
+
+impl StackEntry{
+    fn is_string(&self)->bool{
+        match self{
+            Self::String(_) => true,
+            _ => false,
+        }
+    }
+    /* TODO : Get address of the hashmap
+    fn get_ptr<T>(&self)->*const T{
+        match self{
+            Self::String(_) => panic!("ptr not defined on strings"),
+            Self::Environment(e) => &e.borrow().map as *const T,
+        }
+    }
+    */
+
+}
+
+
 fn run_steq(stack: &mut Stack) -> Result<(), String> {
     //  pop all 4 arguments off the stack
+    
     let unequal_string = stack_pop_string(stack, "STEQ:no string")?;
     let equal_string = stack_pop_string(stack, "STEQ:no string")?;
+    /*
     let s1 = stack_pop_string(stack, "STEQ:no string")?;
     let s2 = stack_pop_string(stack, "STEQ:no string")?;
-    if s1 == s2 {
-        stack.push(make_sses(equal_string));
-    } else {
-        stack.push(make_sses(unequal_string));
-    };
+    */
+    let v1 = stack.pop().unwrap();
+    let v2 = stack.pop().unwrap();
+    // if both are strings, compare them using string equality
+    if v1.borrow().is_string() && v2.borrow().is_string(){
+        if v1 == v2 {
+            stack.push(make_sses(equal_string));
+        } else {
+            stack.push(make_sses(unequal_string));
+        };
+        return Ok(())    
+    }
+    // not ideal but.
+    // for now we use the PartialOrd comparison
+    if !v1.borrow().is_string() && !v2.borrow().is_string(){
+        if v1 == v2 {
+            stack.push(make_sses(equal_string));
+        } else {
+            stack.push(make_sses(unequal_string));
+        }
+        return Ok(())
+    }
+    // so one is a string, one is an environment : they are different.
+    stack.push(make_sses(unequal_string));
     Ok(())
 }
 
@@ -862,4 +910,34 @@ mod tests {
         let r = run_with_prelude("[abc");
         assert!(r.is_err());
     }
+    #[test]
+    fn test_steq_bug(){
+        // STEQ should compare strings AND environments
+        // for now we cheat and use PartialOrd on Environments.
+        // this is not what we really need.  Need to compare memory
+        // addresses on the hashmaps.
+        assert_eq!(run("CREATE CREATE [1][2]STEQ").unwrap(),run("[1]").unwrap());
+        assert_eq!(run("CREATE DUP [1][2]STEQ").unwrap(),run("[1]").unwrap());
+        assert_eq!(run("CREATE [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
+        assert_eq!(run("[a] CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
+        assert_eq!(run("[a] [a] [1][2]STEQ").unwrap(),run("[1]").unwrap());
+        assert_eq!(run("[b] [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
+    }
+
+    #[test]
+    fn test_new_environments_differ(){
+        // if we compare 2 new environments, they should differ
+        let e1 = Environment::new();
+        let e2 = Environment::new();
+        assert!(!std::ptr::eq(&e1.map,&e2.map));  // using PartialOrd they are equal.
+    }
+
+    #[test]
+    fn test_hashmaps_differ(){
+        // we need a special comparison to check hashmap identity
+        let h1 = HashMap::<i64,i64>::new();
+        let h2 = HashMap::<i64,i64>::new();
+        assert!(!std::ptr::eq(&h1,&h2));
+    }
+
 }

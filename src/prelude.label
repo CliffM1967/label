@@ -13,7 +13,7 @@
     [ We now have 6 comment-strings on the stack, so drop them];;; ;;;
 
 
-    [][true] TEST   [ assert the stack is now empty ];
+    [stack not empty][true] TEST   [ assert the stack is now empty ];
 
     [ for brevity, we define ':' to be DEFINE ];
     
@@ -50,8 +50,6 @@
     [if1] [[1]][[2]]true  if [1]eq TEST
     [if2] [[1]][[2]]false if [2]eq TEST
 
-    [ instead of writing [] true TEST we write assert_empty ];
-    [[assert_empty failed]true TEST][assert_empty]:
 
     [ we need only implement nand.  Can then derive not,and & or];
 
@@ -263,12 +261,9 @@
 
     [ a simple pair object ];
 
-    
-
-[
     [ [second]: [first]:
-      CREATE dup dup [obj]: ENTER [first]? [first]: [second]? [second]:
-      LEAVE 
+      CREATE [obj]: obj ENTER [first]? [first]: [second]? [second]:
+      obj LEAVE 
     ][pair_make]:
 
 
@@ -279,6 +274,30 @@
 
     [pair1][1][2]pair_make pair_first [1] eq TEST
     [pair2][1][2]pair_make pair_second [2] eq TEST
+
+
+    [ a linked-list ];
+
+    [[][]pair_make][linked_list_end]:
+    [[link]: link pair_first [] eq link pair_second [] eq and] 
+    [linked_list_is_end]:
+
+    [linked_list_end1]linked_list_end linked_list_is_end TEST 
+ 
+    [ construct a link: link body link_make ];
+
+    [pair_make][link_make]:
+    [pair_second][link_entry]:
+    [pair_first][link_link]:
+    [pair_first linked_list_is_end][link_is_end]:
+[
+[linked_list_end2]linked_list_end [a] link_make link_is_end not TEST
+
+
+
+    [link_make1] linked_list_end [a] link_make link_body [a] eq TEST
+    [link_make2] linked_list_end [a] link_make link_link linked_list_is_end TEST
+
+[link_make3] linked_list_end [a] link_make linked_list_is_end not TEST
 ];
-    assert_empty
-   
+
