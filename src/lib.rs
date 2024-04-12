@@ -309,7 +309,7 @@ fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
     }
     
     if env.borrow().parent!=None{
-        return Err(format!("TEST:Not at outer environment"));
+        return Err(format!("TEST: '{test_name}' Not at outer environment"));
     }
     
     // TEST passed so now just continue...
@@ -474,7 +474,8 @@ fn lex(program: &str) -> Result<Vec<String>, String> {
                 stop += 1;
             }
             if depth > 0 {
-                return Err(format!("Bad substring in lex:{program}"));
+                let substring = convert_string(&bytes[start..stop]);
+                return Err(format!("Bad substring in lex:{substring}"));
             }
             let substring = convert_string(&bytes[start..stop]);
             ret.push(substring);
@@ -853,6 +854,12 @@ mod tests {
     #[test]
     fn test_throws_on_redefinition(){
         let r = run("[foo][bar]DEFINE [another def][bar]DEFINE");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn test_parse_bug(){
+        let r = run_with_prelude("[abc");
         assert!(r.is_err());
     }
 }
