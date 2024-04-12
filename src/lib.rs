@@ -406,7 +406,8 @@ fn run_steq(stack: &mut Stack) -> Result<(), String> {
     // not ideal but.
     // for now we use the PartialOrd comparison
     if !v1.borrow().is_string() && !v2.borrow().is_string(){
-        if v1 == v2 {
+        //if v1 == v2 {
+        if std::ptr::eq(&*v1,&*v2) {
             stack.push(make_sses(equal_string));
         } else {
             stack.push(make_sses(unequal_string));
@@ -913,10 +914,7 @@ mod tests {
     #[test]
     fn test_steq_bug(){
         // STEQ should compare strings AND environments
-        // for now we cheat and use PartialOrd on Environments.
-        // this is not what we really need.  Need to compare memory
-        // addresses on the hashmaps.
-        assert_eq!(run("CREATE CREATE [1][2]STEQ").unwrap(),run("[1]").unwrap());
+        assert_eq!(run("CREATE CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
         assert_eq!(run("CREATE DUP [1][2]STEQ").unwrap(),run("[1]").unwrap());
         assert_eq!(run("CREATE [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
         assert_eq!(run("[a] CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
@@ -930,6 +928,13 @@ mod tests {
         let e1 = Environment::new();
         let e2 = Environment::new();
         assert!(!std::ptr::eq(&e1.map,&e2.map));  // using PartialOrd they are equal.
+    }
+
+    #[test]
+    fn test_new_environments_behind_rcrefcell_differ(){
+        let e1 = Environment::new_shared();
+        let e2 = Environment::new_shared();
+        assert!(!std::ptr::eq(&e1,&e2));
     }
 
     #[test]
