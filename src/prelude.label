@@ -338,6 +338,16 @@ object];
    [list_contains2] list_new [a] list_add [a] list_contains TEST
    [list_contains3] list_new [a] list_add [b] list_contains not TEST
 
+[
+    [list]:
+        [nat_0]
+        [list list_next list_length nat_1 nat_add]
+        list list_is_empty if
+]
+[list_length]:
+
+[list_length_zero] list_new list_length nat_0 nat_eq TEST
+[list_length_one] list_new [x] list_add list_length nat_1 nat_eq TEST
 
 [ define booleans more formally ];
 
@@ -348,5 +358,63 @@ object];
 [and][bool_and]:
 [or][bool_or]:
 [eq][bool_eq]:
+
+[ given a block with the variable [x], evaluate it over {true,false}
+  and answer the "anded" result
+  ];
+
+[ first we do it explicitly for true and false];
+
+[[block]: CREATE ENTER true [x]: block LEAVE ][eval_x_true]:
+[[block]: CREATE ENTER false [x]: block LEAVE ][eval_x_false]:
+
+[block_eval1] [x] eval_x_true TEST
+[block_eval2] [x] eval_x_false not TEST
+
+[[block]: [block]? eval_x_true [block]? eval_x_false bool_and][eval_x]:
+
+[block_eval3] [x] eval_x bool_f bool_eq TEST
+
+
+[tautology] [x bool_not x bool_nand] eval_x TEST
+
+[[bool]: [block]: CREATE ENTER bool [x]: block LEAVE][eval_x_arg]:
+
+[true eval_x_arg][eval_x_true_factored]:
+[false eval_x_arg][eval_x_false_factored]:
+
+[[block]: [block]? eval_x_true_factored [block]? eval_x_false_factored
+    bool_and][eval_x_factored]:
+
+[[block]: [var]: 
+    CREATE ENTER bool_t  [var]?   : CREATE ENTER block LEAVE LEAVE
+    CREATE ENTER bool_f  [var]?   : CREATE ENTER block LEAVE LEAVE
+    bool_and]
+[eval]:
+
+[
+    [dec]: [list]:        
+        [list]
+        [
+            [dec]? CHOP [char]: [dec]:
+                [list [dec]? get_declaration_list_iter]
+                [list [char]? list_add [dec]? get_declaration_list_iter]
+                [char]? [ ] eq if       
+        ]
+        [dec]? [] eq if
+]
+[get_declaration_list_iter]:
+
+
+
+[list_new swap get_declaration_list_iter][get_declaration_list]:
+
+
+[empty_declaration] [] get_declaration_list list_is_empty TEST
+[ignore_leading_spaces] [   ] get_declaration_list list_is_empty TEST
+[single  ] [a] get_declaration_list [a] list_contains TEST
+[double ] [a b] get_declaration_list [b] list_contains TEST
+[three] [ a  b c ] get_declaration_list list_length nat_3 nat_eq TEST
+
 
 

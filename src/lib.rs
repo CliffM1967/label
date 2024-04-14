@@ -234,12 +234,6 @@ fn get_env(se: SharedStackEntry) -> SharedEnvironment {
 fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, String> {
     // prefix the prelude with a space
     let program = format!("{} {}", prelude, program);
-    /*
-    let mut program = parse(&program)?;
-    // going to be popping the commands off, so reverse the parse() result
-    //println!("Running program '{:?}'",program);
-    program.reverse();
-    */
     let mut env = Environment::new_shared();
 
     run_program(&program,env)
@@ -247,7 +241,6 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
 
 
 fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
-    let mut history = vec![]; // ASSERT needs to know the history
     let mut stack = vec![];
 
     let program = program.to_string();
@@ -262,8 +255,6 @@ fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
-        history.push(cmd.clone());
-        println!("Command {:?}",cmd);
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
             Command::Symbol(s) => match s.as_str() {
@@ -280,7 +271,7 @@ fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
                 "JOIN" => run_join(&mut stack)?,
                 "CHOP" => run_chop(&mut program, &mut stack)?,
                 "TEST" => run_test(&env,&mut stack)?,
-                "ASSERT" => run_assert(&env,&mut stack,&history)?,
+                "ASSERT" => run_assert(&env,&mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
                 _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
             },
@@ -337,72 +328,16 @@ fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
     Ok(())
 }
 
-fn is_primitive(s:&str)->bool{
-    match s{
-        "DEFINE" => true,
-        _ => false,
-    }
-}
 
-// need to convert Vec<Command> to Vec<String>
-fn make_explicit_history(history:&Vec<Command>)->Vec<String>{
-    let mut r = vec![];
-    let n = history.len();
-    for cmd in &history[..n-2]{  // ignore final assert and program
-        match cmd{
-            Command::String(s) => r.push(s.to_string()),
-            Command::Symbol(s) => { // convert auto-exec into explicit form
-                if !is_primitive(s){
-                    r.push(s.to_string());
-                    r.push("LOOKUP".to_string());
-                    r.push("EXECUTE".to_string());
-                } else {
-                    r.push(s.to_string());
-                }
-            },
-        }
-    }
-    r
-}
 
-fn convert_history(history:&Vec<Command>)->Vec<String>{
-    let mut r = vec![];
-    let n = history.len();
-    for cmd in &history[..n-2]{
-        match cmd{
-            Command::String(s) => r.push(format!("[{}]",s)),
-            Command::Symbol(s) => r.push(format!("{}",s)),
-        }
-    }
-    r
-}
-
-fn run_assert(env:&SharedEnvironment,stack:&mut Stack,history:&Vec<Command>,
-            )->Result<(),String>{
+fn run_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
     let program = stack_pop_string(stack,"ASSERT had no program")?;
    
-    let mut full_prelude = vec![];
-    //full_prelude.push(prelude());
-    //full_prelude.push(" ".to_string());
-    full_prelude.extend(convert_history(history));
-    
-    let full_prelude = full_prelude.join(" ");
+    // run this program within ourselves
+    let result = run_program(&program,env.borrow_mut().child_get()); 
 
-    // copy history minus last two entries which will be [xxx]ASSERT
-    // don't wish to modify the original history
-    let mut ch = vec![];
-    let n = history.len();
-    for cmd in &history[..n-2]{
-        ch.push(cmd.clone())
-    }
-    ch.reverse();
-
-
-    //println!("ASSERTING '{}' '{}'",full_prelude,program);
-    let result = run_program(&program,env.borrow_mut().child_get());   //,full_prelude);
-
+    // only return true if there was a single-entry true left on stack
     if result.is_ok(){
-        println!("Result was ok : {:?}",result);
         let result = result.clone().unwrap();
         if result.len()==1{
             if result[0]==make_sses("true".to_string()){
@@ -412,33 +347,11 @@ fn run_assert(env:&SharedEnvironment,stack:&mut Stack,history:&Vec<Command>,
             }
         }
     }
-    println!("Result was not ok {:?}",result);
 
     let se = make_sses("false".to_string());
     stack.push(se);
     Ok(())
 }
-
-/*
-fn xrun_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
-    program = stack.pop();
-    if program == None{
-        return Err("ASSERT expected program to run");
-    }
-    let result = run_with_prelude(program);
-    if result.is_err(){
-        stack.push("false");
-        return
-    }
-    let result = result.unwrap();
-    if result.len()!=1{
-        stack.push("false");
-        return
-    }
-    let tos:SharedStackEntry = stack.pop().unwrap();
-    stack.push("false");
-}
-*/
 
 
 fn run_dup(stack: &mut Stack) -> Result<(), String> {
@@ -457,7 +370,7 @@ fn run_define(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> 
     let key = stack_pop_string(stack, "no key for DEFINE")?;
     let value = stack.pop();
     if value == None{
-        return Err(format!("No value found for {key}"));
+        return Err(format!("**No value found for {key}"));
     }
     let value = value.unwrap();
     if env.borrow().map.contains_key(&key){
@@ -1112,7 +1025,6 @@ mod tests {
 
     //#[test]
     fn test_assert_program_includes_new_definitions(){
-        // this should fail: something_new is not defined for ASSERT
         let p = "[1][something_new]: [something_new] ASSERT";
         let result = run_with_prelude(p);
         assert!(result.is_ok());
