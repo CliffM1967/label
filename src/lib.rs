@@ -27,7 +27,7 @@ pub enum Token {
     Symbol(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq,Clone)]
 enum Command {
     Symbol(String),
     String(String),
@@ -238,6 +238,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
     // going to be popping the commands off, so reverse the parse() result
     program.reverse();
 
+    let mut history = vec![]; // ASSERT needs to know the history
     let mut stack = vec![];
 
     // initialise our environment for DEFINE and LOOKUP
@@ -248,6 +249,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
             return Ok(stack);
         }
         let cmd = program.pop().unwrap();
+        history.push(cmd.clone());
         //println!("Command {:?}",cmd);
         match cmd {
             Command::String(s) => stack.push(make_sses(s)),
@@ -265,7 +267,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "JOIN" => run_join(&mut stack)?,
                 "CHOP" => run_chop(&mut program, &mut stack)?,
                 "TEST" => run_test(&env,&mut stack)?,
-                "ASSERT" => run_assert(&env,&mut stack)?,
+                "ASSERT" => run_assert(&env,&mut stack,&history)?,
                 // s is a Symbol, so "auto-execute" if it's defined
                 _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
             },
@@ -323,8 +325,33 @@ fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
 }
 
 
-fn run_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
-    let program = stack.pop();
+fn run_assert(env:&SharedEnvironment,stack:&mut Stack,history:&Vec<Command>,
+            )->Result<(),String>{
+    let program = stack_pop_string(stack,"ASSERT had no program")?;
+   
+    let mut full_prelude = vec![];
+    full_prelude.push(prelude());
+    full_prelude.push(" ".to_string());
+    //full_prelude.extend(history);
+    
+    let full_prelude = full_prelude.join(" ");
+
+    let result = run_with_passed_prelude(&program,full_prelude);
+    println!("ASSERTING '{}'",program);
+
+    if result.is_ok(){
+        println!("Result was ok : {:?}",result);
+        let result = result.unwrap();
+        if result.len()==1{
+            if result[0]==make_sses("true".to_string()){
+                let se = make_sses("true".to_string());
+                stack.push(se);
+                return Ok(())
+            }
+        }
+    }
+    println!("Result was not ok");
+
     let se = make_sses("false".to_string());
     stack.push(se);
     Ok(())
@@ -976,15 +1003,53 @@ mod tests {
     }
 
     #[test]
-    fn test_label_interprets_empty_string(){
+    fn test_assert_interprets_empty_string(){
         let p = "[]ASSERT";
         let r = run_with_prelude(p);
-        assert!(r.is_ok()); // ASSERT always succeeds
+        assert!(r.is_ok()); 
         let r = r.unwrap();
 
         let expected = run_with_prelude("false").unwrap();
         assert_eq!(r,expected);
     }
 
+    #[test]
+    fn test_assert_throws_error_no_program(){
+        let p = "ASSERT";
+        let r = run_with_prelude(p);
+        assert!(r.is_err());
+    }
 
+    #[test]
+    fn test_assert_throws_error_on_program(){
+        let p = "[something_undefined] ASSERT";
+        let result = run_with_prelude(p).unwrap();
+        let expected = run_with_prelude("false").unwrap();
+        assert_eq!(result,expected);
+    }
+
+    #[test]
+    fn test_assert_program_returns_true(){
+        let p = "[true] ASSERT";
+        let result = run_with_prelude(p).unwrap();
+        let expected = run_with_prelude("true").unwrap();
+        assert_eq!(result,expected);
+    }
+
+    #[test]
+    fn test_assert_program_returns_false(){
+        let p = "[false] ASSERT";
+        let result = run_with_prelude(p).unwrap();
+        let expected = run_with_prelude("false").unwrap();
+        assert_eq!(result,expected);
+    }
+
+    //#[test]
+    fn test_assert_program_includes_new_definitions(){
+        // this should fail: something_new is not defined for ASSERT
+        let p = "[1][something_new]: [something_new] ASSERT";
+        let result = run_with_prelude(p);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(),run_with_prelude("false").unwrap());
+    }
 }
