@@ -265,6 +265,7 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
                 "JOIN" => run_join(&mut stack)?,
                 "CHOP" => run_chop(&mut program, &mut stack)?,
                 "TEST" => run_test(&env,&mut stack)?,
+                "ASSERT" => run_assert(&env,&mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
                 _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
             },
@@ -320,6 +321,36 @@ fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
     // TEST passed so now just continue...
     Ok(())
 }
+
+
+fn run_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
+    let program = stack.pop();
+    let se = make_sses("false".to_string());
+    stack.push(se);
+    Ok(())
+}
+
+/*
+fn xrun_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
+    program = stack.pop();
+    if program == None{
+        return Err("ASSERT expected program to run");
+    }
+    let result = run_with_prelude(program);
+    if result.is_err(){
+        stack.push("false");
+        return
+    }
+    let result = result.unwrap();
+    if result.len()!=1{
+        stack.push("false");
+        return
+    }
+    let tos:SharedStackEntry = stack.pop().unwrap();
+    stack.push("false");
+}
+*/
+
 
 fn run_dup(stack: &mut Stack) -> Result<(), String> {
     let tos1 = stack.pop();
@@ -403,8 +434,7 @@ fn run_steq(stack: &mut Stack) -> Result<(), String> {
         };
         return Ok(())    
     }
-    // not ideal but.
-    // for now we use the PartialOrd comparison
+    // if both are environments, compare their memory pointers:
     if !v1.borrow().is_string() && !v2.borrow().is_string(){
         //if v1 == v2 {
         if std::ptr::eq(&*v1,&*v2) {
@@ -944,5 +974,17 @@ mod tests {
         let h2 = HashMap::<i64,i64>::new();
         assert!(!std::ptr::eq(&h1,&h2));
     }
+
+    #[test]
+    fn test_label_interprets_empty_string(){
+        let p = "[]ASSERT";
+        let r = run_with_prelude(p);
+        assert!(r.is_ok()); // ASSERT always succeeds
+        let r = r.unwrap();
+
+        let expected = run_with_prelude("false").unwrap();
+        assert_eq!(r,expected);
+    }
+
 
 }

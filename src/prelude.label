@@ -338,3 +338,15 @@ object];
    [list_contains2] list_new [a] list_add [a] list_contains TEST
    [list_contains3] list_new [a] list_add [b] list_contains not TEST
 
+
+[ define booleans more formally ];
+
+[true][bool_t]:
+[false][bool_f]:
+[not][bool_not]:
+[nand][bool_nand]:
+[and][bool_and]:
+[or][bool_or]:
+[eq][bool_eq]:
+
+
