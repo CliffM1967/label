@@ -441,3 +441,64 @@ object];
 [bool_eval x y]       [x y]  [bool_t]            bool_eval TEST
 [bool_eval x y fail]  [x y]  [x y nand]          bool_eval not TEST
 [bool_eval x unbound] [[]     [x]   bool_eval] ASSERT not TEST
+
+[ we now want to work with specific "objects" ];
+
+[ define "objects" ];
+
+[pair_make][object_make]:
+[pair_first][object_type]:
+[pair_second][object_body]:
+
+[ we want types to be objects themselves...];
+
+[[*] [*] object_make] [root_type_make]:
+
+[object_make][type_make]: 
+[object_type][type_super]:
+[object_body][type_name]:
+
+[ all subsequent types descend from root_type ];
+
+[super type of root_type is "*"] root_type_make type_super [*] eq TEST
+
+[st1] root_type_make [foo] type_make type_super object_type [*] eq TEST
+[st2] root_type_make [foo] type_make type_super type_super  [*] eq TEST
+
+
+[
+[ define the type "proposition" ];
+
+[[proposition]swap object_make][proposition_make]:
+[object_body][proposition_label]:
+
+[test prop type  ] [P] proposition_make object_type [proposition] eq TEST
+[test prop label ] [P] proposition_make proposition_label [P] eq TEST
+
+[ define the three sub-types of form_prop, form_neg and form_imp ];
+
+[[form_prop]swap object_make][form_prop_make]:
+[object_body][form_prop_prop]:
+
+[test form_prop type] [P] proposition_make form_prop_make object_type [form_prop] eq TEST
+
+[ test form_prop prop]
+    [P] proposition_make form_prop_make form_prop_prop proposition_label
+    [P] eq TEST
+
+
+[[form_neg]swap object_make][form_neg_make]:
+[object_body][form_neg_prop]:
+
+[ pair_make [form_imp] swap object_make][form_imp_make]:
+[object_body pair_first][form_imp_ante]:
+[object_body pair_second][form_imp_cons]:
+
+[form_imp type][P]proposition_make [Q] proposition_make form_imp_make
+    object_type [form_imp] eq TEST
+
+[form_imp ante][P]proposition_make [Q] proposition_make form_imp_make
+    form_imp_ante proposition_label [P] eq TEST
+
+];
+
