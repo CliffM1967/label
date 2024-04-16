@@ -177,7 +177,7 @@ fn stack_pop(stack: &mut Stack) -> Result<SharedStackEntry, String> {
 fn stack_pop_string(stack: &mut Stack, message: &str) -> Result<String, String> {
     let sse = stack.pop();
     if sse.is_none() {
-        return Err("pop on Empty stack:Expected test name".to_string());
+        return Err(message.to_string());
     }
     let sse = sse.unwrap();
     let se = sse.borrow();
@@ -828,7 +828,7 @@ mod tests {
         }
         // The 1 argument case:
         match run("[x]TEST") {
-            Err(s) => assert_eq!(s, "pop on Empty stack:Expected test name"),
+            Err(s) => assert_eq!(s, "Expected test name"),
             _ => assert!(false),
         }
 

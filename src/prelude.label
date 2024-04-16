@@ -145,7 +145,7 @@
 
     [ now consider subtraction: we need repeated decrements];
     [ the base case is 'x 0 sub' should be 'x'];
-    [ the recursive case is 'x y sub' should be 'x nat_dec y nat_dec];
+    [ the inductive case is 'x y sub' should be 'x nat_dec y nat_dec];
 
     [ [y]: [x]:
         [[x]?]
@@ -416,5 +416,28 @@ object];
 [double ] [a b] get_declaration_list [b] list_contains TEST
 [three] [ a  b c ] get_declaration_list list_length nat_3 nat_eq TEST
 
+[
+    [block]: [vars]:
+        [vars]? get_declaration_list [block]? bool_eval_iter
+]
+[bool_eval]:
 
+[
+    [block]: [vlist]:
+        [block]
+        [
+            vlist list_pop [var]: [vlist]:
+            CREATE ENTER bool_t [var]? : vlist [block]? bool_eval_iter LEAVE 
+            CREATE ENTER bool_f [var]? : vlist [block]? bool_eval_iter LEAVE
+            bool_and
+        ]
+        vlist list_is_empty if
+]
+[bool_eval_iter]:
 
+[bool_eval no vars]   []     [bool_t]            bool_eval TEST
+[bool_eval x only]    [x]    [x not x bool_nand] bool_eval TEST
+[bool_eval x fails]   [x]    [x]                 bool_eval not TEST
+[bool_eval x y]       [x y]  [bool_t]            bool_eval TEST
+[bool_eval x y fail]  [x y]  [x y nand]          bool_eval not TEST
+[bool_eval x unbound] [[]     [x]   bool_eval] ASSERT not TEST
