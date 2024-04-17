@@ -20,11 +20,13 @@
     [LEAVE DEFINE CREATE ENTER][:]DEFINE
 
 
-
     [ nicer to write '?' rather than 'LOOKUP' ];
     [LOOKUP][?]:
     
-    [ now define the words 'true' and 'false' ];
+[ First we make some primitive definitions to help us with the bootstrap
+  of our type-system];
+    
+    [ define the words 'true' and 'false' ];
     [[true]][true]:
     [[false]][false]:
 
@@ -104,6 +106,120 @@
     [reverse3] [abc]reverse [cba]eq TEST 
 
 
+
+    [ a simple pair object ];
+
+    [ [second]: [first]:
+      CREATE [obj]: obj ENTER [first]? [first]: [second]? [second]:
+      obj LEAVE 
+    ][pair_make]:
+
+
+    [ENTER [first]? LEAVE] [pair_first]:
+
+    [ENTER [second]? LEAVE] [pair_second]:
+
+
+    [pair1][1][2]pair_make pair_first [1] eq TEST
+    [pair2][1][2]pair_make pair_second [2] eq TEST
+
+[ we now want to work with specific "objects" ];
+
+[ define "objects" ];
+
+[pair_make][object_make]:
+[pair_first][object_type]:
+[pair_second][object_body]:
+
+[ we want types to be objects themselves...];
+
+[ <parent type> <name> <program> type_make is the constructor ];
+
+[object_make object_make][type_make]:  
+[object_type][type_super]:
+[object_body object_type][type_name]:
+[object_body object_body][type_program]:
+
+
+[[*] [root][] type_make] [root_type_make]:
+[ all subsequent types descend from root_type ];
+
+[super type of root_type is "*"] root_type_make type_super [*] eq TEST
+[name of root_type is "root"] root_type_make type_name [root] eq TEST
+[program of root_type is ""]  root_type_make type_program [] eq TEST
+
+
+[ test the type foo which an an empty program];
+
+[st1] root_type_make [foo][] type_make type_super object_type [*] eq TEST
+[st2] root_type_make [foo][] type_make type_super type_super  [*] eq TEST
+
+
+[ create and test type foo descending from root type];
+
+[st3] root_type_make [foo][some program] type_make type_name [foo] eq TEST
+[st4] root_type_make [foo][some program] type_make 
+    type_program [some program] eq TEST
+
+[ the simplest possible type takes a single value "simple" and has
+a single operation, simple_nop.  It's constructor takes no arguments];
+
+[ root_type_make [simple][] type_make [] object_make] [simple_make]:
+
+[ check the type name is "simple"];
+[s1] simple_make object_type type_name [simple] eq TEST
+
+[ we can make programs objects too.  They descend from root_type];
+
+
+[[p]: root_type_make [program][] type_make [p]? object_make][program_make]:
+[object_body][program_fetch]:
+[program_fetch EXECUTE][program_run]:
+
+[p1] [some program]program_make object_type type_name [program] eq TEST
+[p2] [some program]program_make program_fetch [some program] eq TEST
+
+[ the only operation that simple supports is simple_nop: does nothing];
+
+[so simple_nop is a "program" that has no effect];
+
+[[]program_make][simple_nop]:
+
+[simple_make is therefore an empty program];
+
+[the type of simple_nop is the empty program--it doesn't affect the stack];
+
+[ the name of the type of simple_nop is "program"];
+[s1]simple_nop object_type type_name [program] eq TEST
+
+[ its "effect-type" is the empty program];
+[s2]simple_nop program_fetch [] eq TEST
+
+
+[s1] simple_make program_fetch [] eq TEST
+
+[ implement booleans as objects ];
+
+[ define a new object type of boolean];
+[[boolean][] type_make][type_boolean]:
+
+[ define it's two possible values];
+[type_boolean true object_make][boolean_t]:
+[type_boolean false object_make][boolean_f]:
+
+[ boolean not is a program that takes a single argument];
+
+[ define booleans more formally];
+
+[true][bool_t]:
+[false][bool_f]:
+[not][bool_not]:
+[nand][bool_nand]:
+[and][bool_and]:
+[or][bool_or]:
+[eq][bool_eq]:
+
+
     [implement zero as an empty string]; 
     [[]][nat_0]:
 
@@ -125,6 +241,8 @@
     [nat_3 nat_succ][nat_4]:
     [nat_4 nat_succ][nat_5]:
     [nat_5 nat_succ][nat_6]:
+
+
 
     [addition is easy -- just JOIN two numbers together];
     [JOIN][nat_add]:
@@ -259,21 +377,6 @@
     [rem6] nat_6 nat_4 nat_remainder nat_2 nat_eq TEST
 
 
-    [ a simple pair object ];
-
-    [ [second]: [first]:
-      CREATE [obj]: obj ENTER [first]? [first]: [second]? [second]:
-      obj LEAVE 
-    ][pair_make]:
-
-
-    [ENTER [first]? LEAVE] [pair_first]:
-
-    [ENTER [second]? LEAVE] [pair_second]:
-
-
-    [pair1][1][2]pair_make pair_first [1] eq TEST
-    [pair2][1][2]pair_make pair_second [2] eq TEST
 
 
     [ a linked-list ];
@@ -349,15 +452,21 @@ object];
 [list_length_zero] list_new list_length nat_0 nat_eq TEST
 [list_length_one] list_new [x] list_add list_length nat_1 nat_eq TEST
 
-[ define booleans more formally ];
+[ also want a definition for a set which will be a list with set_add];
 
-[true][bool_t]:
-[false][bool_f]:
-[not][bool_not]:
-[nand][bool_nand]:
-[and][bool_and]:
-[or][bool_or]:
-[eq][bool_eq]:
+[list_new][set_new]:
+
+[set1] set_new list_is_empty TEST
+
+[[object]: [set]:
+    [set]
+    [set [object]? list_add]
+    set [object]? list_contains if
+][set_add]:
+
+[set2] set_new [a] set_add [b] set_add [a] set_add
+    list_length nat_2 nat_eq TEST
+
 
 [ given a block with the variable [x], evaluate it over {true,false}
   and answer the "anded" result
@@ -442,36 +551,11 @@ object];
 [bool_eval x y fail]  [x y]  [x y nand]          bool_eval not TEST
 [bool_eval x unbound] [[]     [x]   bool_eval] ASSERT not TEST
 
-[ we now want to work with specific "objects" ];
-
-[ define "objects" ];
-
-[pair_make][object_make]:
-[pair_first][object_type]:
-[pair_second][object_body]:
-
-[ we want types to be objects themselves...];
-
-[[*] [*] object_make] [root_type_make]:
-
-[object_make][type_make]: 
-[object_type][type_super]:
-[object_body][type_name]:
-
-[ all subsequent types descend from root_type ];
-
-[super type of root_type is "*"] root_type_make type_super [*] eq TEST
-
-[st1] root_type_make [foo] type_make type_super object_type [*] eq TEST
-[st2] root_type_make [foo] type_make type_super type_super  [*] eq TEST
-
-[ define a type directly inherited from root_type];
-[root_type_make swap type_make ][make_simple_type]:
 
 
 [ define the type "proposition" ];
 
-[root_type_make [proposition] type_make swap object_make][proposition_make]:
+[root_type_make [proposition][] type_make swap object_make][proposition_make]:
 [object_body][proposition_label]:
 
 [test prop type  ] [P] proposition_make object_type type_name [proposition] eq TEST
@@ -479,11 +563,12 @@ object];
 
 [ define the abstract type of "form" ];
 
-[root_type_make [form] type_make][form_type_make]:
+[root_type_make [form][] type_make][form_type_make]:
+
 
 [ define the three sub-types of form_prop, form_neg and form_imp ];
 
-[form_type_make [form_prop] type_make swap object_make][form_prop_make]:
+[form_type_make [form_prop][] type_make swap object_make][form_prop_make]:
 [object_body][form_prop_prop]:
 
 [test form_prop type] [P] proposition_make form_prop_make object_type
@@ -497,12 +582,12 @@ type_name [form_prop] eq TEST
 
 
 
-[form_type_make [form_neg] type_make swap object_make][form_neg_make]:
+[form_type_make [form_neg][] type_make swap object_make][form_neg_make]:
 [object_body][form_neg_prop]:
 
 
 
-[ pair_make form_type_make [form_imp] type_make swap object_make][form_imp_make]:
+[ pair_make form_type_make [form_imp][] type_make swap object_make][form_imp_make]:
 [object_body pair_first][form_imp_ante]:
 [object_body pair_second][form_imp_cons]:
 
@@ -516,5 +601,105 @@ type_name [form_prop] eq TEST
 [form_imp cons][P]proposition_make [Q] proposition_make form_imp_make
     form_imp_cons proposition_label [Q] eq TEST
 
+[
+We have seen that everything is in fact a program.  The "type" of that
+program is the effect it has on the stack.  This is described by the
+program itself.
+
+We want to have Axioms and Theorems as objects in our system.
+
+An axiom is a formula which has no proof.  It must be taken on pure
+faith.  A theorem is a formula with a proof, which is run when it is constructed.
+
+After a theorem has been constructed, it is used by placing it on the stack
+and invoking it.  It goes through the same constructive process as an
+axiom.  
+
+To use an axiom, one places the axiom on the stack and then "invoke" it.
+This runs its constructor program which will look at the contained formula,
+find all the propositions in use pick up the definitions for these off the
+stack, make the appropriate substitutions and push the resulting theorem
+onto the stack.  But this cannot be a theorem as it has no proof and
+therefore cannot be constructed.  So really just another axiom is pushed
+on.
+
+So it looks like we want to have "bald theorems" which have no proof, and a
+sub-type of "theorem" which does have a proof.
+
+If we make axioms sub-types of theorems, they just don't have proofs, then
+both can be considered as theorems.
+
+This suggests the following definitions:
+];
+
+[root_type_make [theorem][] type_make][type_theorem_make]:
+[type_theorem_make [axiom][] type_make][type_axiom_make]:
+
+[ now we can construct instances of theorems and axioms ];
+
+[ the constructor for theorem is <formula> <proof> theorem_make ];
+[[proof]: [formula]: 
+    type_theorem_make  
+    [formula]? [proof]? pair_make
+    object_make]
+[theorem_make]:
+
+[object_body pair_first][theorem_formula]:
+[object_body pair_second][theorem_proof]:
 
 
+
+[t0] [f][p] theorem_make object_type type_name [theorem] eq TEST
+[t1] [f][p] theorem_make theorem_formula [f] eq TEST
+[t2] [f][p] theorem_make theorem_proof [p] eq TEST
+
+[ the constructor for axiom is <formula> axiom_make ];
+
+[type_axiom_make swap object_make][axiom_make]:
+[object_body][axiom_formula]:
+
+[a0] [f] axiom_make object_type type_name [axiom] eq TEST
+
+
+[a1] [f] axiom_make axiom_formula [f] eq TEST
+
+[ now we can define the invocation algorithm for axiom];
+[ the first step is to scan the formula and make a list of the
+propositions];
+
+
+[tn1] root_type_make type_name [root] eq TEST
+
+
+[tn2] root_type_make [foo][] type_make type_name [foo] eq TEST
+
+
+[
+    [list]: [form]:
+        [list form form_prop_prop set_add]
+        [
+            [list form form_neg_prop set_add]
+            [
+            list 
+                form form_imp_ante set_add
+                form form_imp_cons set_add
+            ]
+            form object_type type_name [form_neg] eq if
+        ]
+    form object_type type_name [form_prop] eq if
+]
+[form_get_props_iter]:
+
+[set_new form_get_props_iter][form_get_props]:
+
+[g1] [P]proposition_make form_prop_make form_get_props 
+     list_length nat_1 nat_eq TEST
+
+[g2] [P]proposition_make form_neg_make form_get_props
+    list_length nat_1 nat_eq TEST
+
+[g3] [P]proposition_make [Q] proposition_make form_imp_make form_get_props
+    list_length nat_2 nat_eq TEST
+
+[g4] [P]proposition_make [P] proposition_make form_imp_make form_get_props
+    list_length nat_2 nat_eq TEST

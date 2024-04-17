@@ -64,16 +64,53 @@ impl Environment {
         self.map == another.map
     }
 
-    fn to_string(&self)->String{
+    fn _to_string(&self)->String{
         let mut r = vec![];
         r.push("<Env{".to_string());
-        for key in self.map.keys(){
-            r.push(format!("{key} "));
+        if self.map.contains_key("first"){
+            let v = self.map.get("first").unwrap().borrow();
+            match &*v{
+                StackEntry::Environment(se) =>{
+                    let v = se.borrow();
+                    if v.map.contains_key("second"){
+                        let v = v.map.get("second").unwrap().borrow();
+                        match &*v{
+                            StackEntry::Environment(se) =>{
+                                let v = se.borrow();
+                                if v.map.contains_key("first"){
+                                    let v =
+                                    v.map.get("first").unwrap().borrow();
+                                    match &*v{
+                                        StackEntry::String(s) => r.push(format!("{}",s.to_string())),
+                                        _ => (),
+                                    }
+                                }
+                            },
+                            _ => (),
+                        }
+                    }
+                },
+                _ =>(),
+            }
         }
-        r.push("}>".to_string());
+        r.push(" ".to_string());
+        //for key in self.map.keys(){
+        //    r.push(format!(".{key}. "));
+        //}
+        r.push("}".to_string());
+        r.push(format!("{}",self.depth()));
+        r.push(">".to_string());
         r.join("")
     }
 
+    fn to_string(&self)->String{
+        let mut r = vec![];
+        r.push("<Env{".to_string());
+        r.push("}".to_string());
+        r.push(format!("{}",self.depth()));
+        r.push(">".to_string());
+        r.join("")
+    }
     fn new_shared() -> SharedEnvironment {
         Rc::new(RefCell::new(Self::new()))
     }
@@ -247,6 +284,9 @@ fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
     let mut program = parse(&program)?;
     program.reverse();
 
+    // record all the TESTs we've done
+    let mut history = Vec::<String>::new();
+
     // initialise our environment for DEFINE and LOOKUP
     // let mut env = Environment::new_shared();
 
@@ -302,17 +342,21 @@ fn run_auto(env: SharedEnvironment,
     }
 }
 
-fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
+fn run_test(env:&SharedEnvironment,
+    stack: &mut Stack) -> Result<(), String> {
     if stack.len() == 0 {
         return Err("TEST on empty stack".to_string());
     }
     let boolean = stack_pop_string(stack, "Expected boolean")?;
     let test_name = stack_pop_string(stack, "Expected test name")?;
+    print!("TEST {test_name}...");
     if boolean != "true" {
+        println!("TEST failed '{}'",test_name);
         // our TEST failed: report whole of stack
         return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
     }
     if stack.len() > 0 {
+        println!("TEST failed '{}'",test_name);
         let additional = stack.pop().unwrap();
         return Err(format!(
             "TEST '{test_name}' failed with extra stack entry '{:?}'",
@@ -321,9 +365,11 @@ fn run_test(env:&SharedEnvironment,stack: &mut Stack) -> Result<(), String> {
     }
     
     if env.borrow().parent!=None{
+        println!("TEST failed '{}'",test_name);
         return Err(format!("TEST: '{test_name}' Not at outer environment"));
     }
     
+    println!("passed.");
     // TEST passed so now just continue...
     Ok(())
 }
@@ -950,6 +996,8 @@ mod tests {
     #[test]
     fn test_steq_bug(){
         // STEQ should compare strings AND environments
+        // note we ideally want to compare the contents of two environments
+        // not their memory pointers
         assert_eq!(run("CREATE CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
         assert_eq!(run("CREATE DUP [1][2]STEQ").unwrap(),run("[1]").unwrap());
         assert_eq!(run("CREATE [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
