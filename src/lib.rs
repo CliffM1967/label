@@ -27,7 +27,7 @@ pub enum Token {
     Symbol(String),
 }
 
-#[derive(Debug, PartialEq,Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum Command {
     Symbol(String),
     String(String),
@@ -60,37 +60,139 @@ impl Environment {
         }
     }
 
-    fn equals(&self,another:Self)->bool{
-        self.map == another.map
+    fn shared_equals2(e1: SharedEnvironment, e2: SharedEnvironment) -> bool {
+        e1 == e2
     }
 
-    fn _to_string(&self)->String{
+    // have to do this explicitly as using PartialOrd blows the stack
+    // -- something to do with the Rc<RefCell<>> wrapper ?
+    fn shared_equals(e1: SharedEnvironment, e2: SharedEnvironment) -> bool {
+        print_stderr("shared_equals");
+        let e1 = e1.borrow();
+        let e2 = e2.borrow();
+        let mut x = "foobar".to_string();
+        if e1.depth() != e2.depth() {
+            return false;
+        }
+        for e1k in e1.map.keys() {
+            print_stderr(&format!("Checking e1 key {}", e1k));
+            if !e2.map.contains_key(e1k) {
+                return false;
+            }
+            match &*e1.map.get(e1k).unwrap().borrow() {
+                StackEntry::String(s1) => {
+                    let st = format!("comparing '{s1}'");
+                    print_stderr(&st);
+                    match &*e2.map.get(e1k).unwrap().borrow() {
+                        StackEntry::String(s2) => {
+                            x = s2.clone();
+                            if s1 != s2 {
+                                let st = format!("With {s2} failed");
+                                print_stderr(&st);
+                                return false;
+                            }
+                        }
+                        StackEntry::Environment(se) => return false,
+                    };
+                    print_stderr(&format!("{}", *s1 == x));
+                    print_stderr(&format!("'{s1}' was equal to '{x}'"));
+                    print_stderr(&format!("{}", *s1 == x));
+                    if *s1 != x {
+                        print_stderr("returning false");
+                        return false;
+                    }
+                }
+                StackEntry::Environment(se) => {
+                    match &*e2.map.get(e1k).unwrap().borrow() {
+                        StackEntry::Environment(se2) => {
+                            if !Environment::shared_equals(se.clone(),
+                                se2.clone()){
+                                return false  // don't return if true here
+                                }
+                        }
+                        _ => return false,
+                    };
+                }
+            };
+        }
+        print_stderr("other way around");
+        for e2k in e2.map.keys() {
+            if !e1.map.contains_key(e2k) {
+                return false;
+            }
+            match &*e2.map.get(e2k).unwrap().borrow() {
+                StackEntry::String(s1) => {
+                    match &*e1.map.get(e2k).unwrap().borrow() {
+                        StackEntry::String(s2) => {
+                            let st=format!("Comparing '{s1}' with '{s2}'");
+                            print_stderr(&st);
+                            x = s2.clone();
+                            if s1 != s2 {
+                                print_stderr("returning false");
+                                return false;
+                            }
+                        }
+                        StackEntry::Environment(se) => return false,
+                    };
+                    if *s1 != x {
+                        print_stderr("was not equal2");
+                        return false;
+                    }
+                }
+                StackEntry::Environment(se) => {
+                    match &*e1.map.get(e2k).unwrap().borrow() {
+                        StackEntry::Environment(se2) => {
+                            if !Environment::shared_equals(se.clone(), se2.clone())
+                            { return false // don't return true just yet!
+                            }
+                        }
+                        _ => return false,
+                    };
+                }
+            };
+        }
+        // check parents
+        if e1.depth()>1{
+            let st = format!("Checking parents depth {}",e1.depth());
+            print_stderr(&st);
+            let e1p = e1.parent_get().unwrap();
+            let e2p = e2.parent_get().unwrap();
+            if !Environment::shared_equals(e1p,e2p){
+                return false
+            }
+        }
+        print_stderr("Returning true");
+        true
+    }
+
+    fn _to_string(&self) -> String {
         let mut r = vec![];
         r.push("<Env{".to_string());
-        if self.map.contains_key("first"){
+        if self.map.contains_key("first") {
             let v = self.map.get("first").unwrap().borrow();
-            match &*v{
-                StackEntry::Environment(se) =>{
+            match &*v {
+                StackEntry::Environment(se) => {
                     let v = se.borrow();
-                    if v.map.contains_key("second"){
+                    if v.map.contains_key("second") {
                         let v = v.map.get("second").unwrap().borrow();
-                        match &*v{
-                            StackEntry::Environment(se) =>{
+                        match &*v {
+                            StackEntry::Environment(se) => {
                                 let v = se.borrow();
-                                if v.map.contains_key("first"){
-                                    let v =
-                                    v.map.get("first").unwrap().borrow();
-                                    match &*v{
-                                        StackEntry::String(s) => r.push(format!("{}",s.to_string())),
+                                if v.map.contains_key("first") {
+                                    let v = v.map.get("first").unwrap().borrow();
+                                    match &*v {
+                                        StackEntry::String(s) => {
+                                            r.push(format!("{}", s.to_string()))
+                                        }
                                         _ => (),
                                     }
                                 }
-                            },
+                            }
                             _ => (),
                         }
                     }
-                },
-                _ =>(),
+                }
+                _ => (),
             }
         }
         r.push(" ".to_string());
@@ -98,16 +200,16 @@ impl Environment {
         //    r.push(format!(".{key}. "));
         //}
         r.push("}".to_string());
-        r.push(format!("{}",self.depth()));
+        r.push(format!("{}", self.depth()));
         r.push(">".to_string());
         r.join("")
     }
 
-    fn to_string(&self)->String{
+    fn to_string(&self) -> String {
         let mut r = vec![];
         r.push("<Env{".to_string());
         r.push("}".to_string());
-        r.push(format!("{}",self.depth()));
+        r.push(format!("{}", self.depth()));
         r.push(">".to_string());
         r.join("")
     }
@@ -177,16 +279,13 @@ fn option_to_result<T>(option: Option<T>, message: &str) -> Result<T, String> {
     }
 }
 
-
 impl StackEntry {
-    
-    fn to_string(&self)->String{
-        match self{
+    fn to_string(&self) -> String {
+        match self {
             StackEntry::String(s) => format!("\"{s}\""),
-            StackEntry::Environment(e) => e.borrow().to_string(), 
+            StackEntry::Environment(e) => e.borrow().to_string(),
         }
-    }   
-
+    }
 
     fn get_string(&self) -> String {
         match self {
@@ -273,11 +372,10 @@ fn run_with_passed_prelude(program: &str, prelude: String) -> Result<Stack, Stri
     let program = format!("{} {}", prelude, program);
     let mut env = Environment::new_shared();
 
-    run_program(&program,env)
+    run_program(&program, env)
 }
 
-
-fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
+fn run_program(program: &str, mut env: SharedEnvironment) -> Result<Stack, String> {
     let mut stack = vec![];
 
     let program = program.to_string();
@@ -310,40 +408,41 @@ fn run_program(program:&str,mut env:SharedEnvironment)->Result<Stack,String>{
                 "STEQ" => run_steq(&mut stack)?,
                 "JOIN" => run_join(&mut stack)?,
                 "CHOP" => run_chop(&mut program, &mut stack)?,
-                "TEST" => run_test(&env,&mut stack)?,
-                "ASSERT" => run_assert(&env,&mut stack)?,
+                "TEST" => run_test(&env, &mut stack)?,
+                "ASSERT" => run_assert(&env, &mut stack)?,
                 // s is a Symbol, so "auto-execute" if it's defined
-                _ => run_auto(env.clone(), &mut program, s,&mut stack)?,
+                _ => run_auto(env.clone(), &mut program, s, &mut stack)?,
             },
         }
     }
 }
 
-fn run_auto(env: SharedEnvironment, 
-    program: &mut Program, 
-    s: String,stack:&mut Stack) -> Result<(),String> {
-
+fn run_auto(
+    env: SharedEnvironment,
+    program: &mut Program,
+    s: String,
+    stack: &mut Stack,
+) -> Result<(), String> {
     // lookup s in the current environment
-    let def = env.borrow().lookup(s)?;  // if not defined, throw error.
-    // borrow the value through the Rc<RefCell<>> wrapper
+    let def = env.borrow().lookup(s)?; // if not defined, throw error.
+                                       // borrow the value through the Rc<RefCell<>> wrapper
     let bdef = def.borrow();
     // now we can handle the two cases
-    match &*bdef{
+    match &*bdef {
         StackEntry::String(s) => {
-            let command = Command::String(s.to_string()); 
+            let command = Command::String(s.to_string());
             program.push(Command::Symbol("EXECUTE".to_string()));
             program.push(command);
-            return Ok(())
-        },
-        StackEntry::Environment(_) =>{
+            return Ok(());
+        }
+        StackEntry::Environment(_) => {
             stack.push(def.clone());
-            return Ok(()) 
+            return Ok(());
         }
     }
 }
 
-fn run_test(env:&SharedEnvironment,
-    stack: &mut Stack) -> Result<(), String> {
+fn run_test(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
     if stack.len() == 0 {
         return Err("TEST on empty stack".to_string());
     }
@@ -351,45 +450,43 @@ fn run_test(env:&SharedEnvironment,
     let test_name = stack_pop_string(stack, "Expected test name")?;
     print!("TEST {test_name}...");
     if boolean != "true" {
-        println!("TEST failed '{}'",test_name);
+        println!("TEST failed '{}'", test_name);
         // our TEST failed: report whole of stack
         return Err(format!("TEST '{test_name}' failed on false {:?}", stack));
     }
     if stack.len() > 0 {
-        println!("TEST failed '{}'",test_name);
+        println!("TEST failed '{}'", test_name);
         let additional = stack.pop().unwrap();
         return Err(format!(
             "TEST '{test_name}' failed with extra stack entry '{:?}'",
             additional
         ));
     }
-    
-    if env.borrow().parent!=None{
-        println!("TEST failed '{}'",test_name);
+
+    if env.borrow().parent != None {
+        println!("TEST failed '{}'", test_name);
         return Err(format!("TEST: '{test_name}' Not at outer environment"));
     }
-    
+
     println!("passed.");
     // TEST passed so now just continue...
     Ok(())
 }
 
+fn run_assert(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
+    let program = stack_pop_string(stack, "ASSERT had no program")?;
 
-
-fn run_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
-    let program = stack_pop_string(stack,"ASSERT had no program")?;
-   
     // run this program within ourselves
-    let result = run_program(&program,env.borrow_mut().child_get()); 
+    let result = run_program(&program, env.borrow_mut().child_get());
 
     // only return true if there was a single-entry true left on stack
-    if result.is_ok(){
+    if result.is_ok() {
         let result = result.clone().unwrap();
-        if result.len()==1{
-            if result[0]==make_sses("true".to_string()){
+        if result.len() == 1 {
+            if result[0] == make_sses("true".to_string()) {
                 let se = make_sses("true".to_string());
                 stack.push(se);
-                return Ok(())
+                return Ok(());
             }
         }
     }
@@ -398,7 +495,6 @@ fn run_assert(env:&SharedEnvironment,stack:&mut Stack)->Result<(),String>{
     stack.push(se);
     Ok(())
 }
-
 
 fn run_dup(stack: &mut Stack) -> Result<(), String> {
     let tos1 = stack.pop();
@@ -415,11 +511,11 @@ fn run_dup(stack: &mut Stack) -> Result<(), String> {
 fn run_define(env: &SharedEnvironment, stack: &mut Stack) -> Result<(), String> {
     let key = stack_pop_string(stack, "no key for DEFINE")?;
     let value = stack.pop();
-    if value == None{
+    if value == None {
         return Err(format!("**No value found for {key}"));
     }
     let value = value.unwrap();
-    if env.borrow().map.contains_key(&key){
+    if env.borrow().map.contains_key(&key) {
         return Err(format!("Attempting re-definition of {key}"));
     }
     env.borrow_mut().define(key, value);
@@ -447,9 +543,9 @@ fn run_execute(program: &mut Program, stack: &mut Stack) -> Result<(), String> {
 // Given a stack entry, we want to know if it's a String or
 // SharedEnvironment.
 
-impl StackEntry{
-    fn is_string(&self)->bool{
-        match self{
+impl StackEntry {
+    fn is_string(&self) -> bool {
+        match self {
             Self::String(_) => true,
             _ => false,
         }
@@ -462,13 +558,19 @@ impl StackEntry{
         }
     }
     */
-
 }
 
+fn get_se(se: &StackEntry) -> Option<SharedEnvironment> {
+    match se {
+        StackEntry::String(_) => return None,
+        StackEntry::Environment(se) => return Some(se.clone()),
+    }
+}
 
 fn run_steq(stack: &mut Stack) -> Result<(), String> {
     //  pop all 4 arguments off the stack
-    
+    print_stderr("run_steq");
+
     let unequal_string = stack_pop_string(stack, "STEQ:no string")?;
     let equal_string = stack_pop_string(stack, "STEQ:no string")?;
     /*
@@ -478,23 +580,26 @@ fn run_steq(stack: &mut Stack) -> Result<(), String> {
     let v1 = stack.pop().unwrap();
     let v2 = stack.pop().unwrap();
     // if both are strings, compare them using string equality
-    if v1.borrow().is_string() && v2.borrow().is_string(){
+    if v1.borrow().is_string() && v2.borrow().is_string() {
         if v1 == v2 {
             stack.push(make_sses(equal_string));
         } else {
             stack.push(make_sses(unequal_string));
         };
-        return Ok(())    
+        return Ok(());
     }
-    // if both are environments, compare their memory pointers:
-    if !v1.borrow().is_string() && !v2.borrow().is_string(){
-        //if v1 == v2 {
-        if std::ptr::eq(&*v1,&*v2) {
+    // if both are environments, compare them
+    if !v1.borrow().is_string() && !v2.borrow().is_string() {
+        let se1 = get_se(&*v1.borrow()).unwrap();
+        let se2 = get_se(&*v2.borrow()).unwrap();
+        if Environment::shared_equals(se1, se2) {
+            //if &*v1 == &*v2 {
+            //if std::ptr::eq(&*v1,&*v2) {
             stack.push(make_sses(equal_string));
         } else {
             stack.push(make_sses(unequal_string));
         }
-        return Ok(())
+        return Ok(());
     }
     // so one is a string, one is an environment : they are different.
     stack.push(make_sses(unequal_string));
@@ -554,20 +659,18 @@ fn run_join(stack: &mut Stack) -> Result<(), String> {
     Ok(())
 }
 
-
-pub fn stack_to_string(stack:Stack)->String{
+pub fn stack_to_string(stack: Stack) -> String {
     let mut r = vec![];
     r.push("[ ".to_string());
     let mut sr = vec![];
-    for e in stack{
-        sr.push(format!("{}",e.borrow().to_string()));
-    };
+    for e in stack {
+        sr.push(format!("{}", e.borrow().to_string()));
+    }
     r.push(sr.join(", "));
-    
+
     r.push(" ]".to_string());
     r.join("")
 }
-
 
 fn is_symbol_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
@@ -966,116 +1069,171 @@ mod tests {
     #[test]
     fn test_formatted_output() {
         let r = run_with_prelude("[abc][def]").unwrap();
-        println!("{}",stack_to_string(r));
+        println!("{}", stack_to_string(r));
         assert!(true);
     }
 
     #[test]
-    fn test_prelude_runs_successfully(){
+    fn test_prelude_runs_successfully() {
         let r = run_with_prelude("");
         assert!(r.is_ok());
     }
 
     #[test]
-    fn test_test_inner_environment_failure(){
+    fn test_test_inner_environment_failure() {
         let r = run("CREATE ENTER [this should fail] [true] TEST");
         assert!(r.is_err());
     }
 
     #[test]
-    fn test_throws_on_redefinition(){
+    fn test_throws_on_redefinition() {
         let r = run("[foo][bar]DEFINE [another def][bar]DEFINE");
         assert!(r.is_err());
     }
 
     #[test]
-    fn test_parse_bug(){
+    fn test_parse_bug() {
         let r = run_with_prelude("[abc");
         assert!(r.is_err());
     }
     #[test]
-    fn test_steq_bug(){
+    fn test_steq_bug() {
         // STEQ should compare strings AND environments
         // note we ideally want to compare the contents of two environments
         // not their memory pointers
-        assert_eq!(run("CREATE CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
-        assert_eq!(run("CREATE DUP [1][2]STEQ").unwrap(),run("[1]").unwrap());
-        assert_eq!(run("CREATE [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
-        assert_eq!(run("[a] CREATE [1][2]STEQ").unwrap(),run("[2]").unwrap());
-        assert_eq!(run("[a] [a] [1][2]STEQ").unwrap(),run("[1]").unwrap());
-        assert_eq!(run("[b] [a] [1][2]STEQ").unwrap(),run("[2]").unwrap());
+        assert_eq!(
+            run("CREATE CREATE [1][2]STEQ").unwrap(),
+            run("[1]").unwrap()
+        );
+        assert_eq!(run("CREATE DUP [1][2]STEQ").unwrap(), run("[1]").unwrap());
+        assert_eq!(run("CREATE [a] [1][2]STEQ").unwrap(), run("[2]").unwrap());
+        assert_eq!(run("[a] CREATE [1][2]STEQ").unwrap(), run("[2]").unwrap());
+        assert_eq!(run("[a] [a] [1][2]STEQ").unwrap(), run("[1]").unwrap());
+        assert_eq!(run("[b] [a] [1][2]STEQ").unwrap(), run("[2]").unwrap());
     }
 
     #[test]
-    fn test_new_environments_differ(){
+    fn test_new_environments_differ() {
         // if we compare 2 new environments, they should differ
         let e1 = Environment::new();
         let e2 = Environment::new();
-        assert!(!std::ptr::eq(&e1.map,&e2.map));  // using PartialOrd they are equal.
+        assert!(!std::ptr::eq(&e1.map, &e2.map)); // using PartialOrd they are equal.
     }
 
     #[test]
-    fn test_new_environments_behind_rcrefcell_differ(){
+    fn test_new_environments_behind_rcrefcell_differ() {
         let e1 = Environment::new_shared();
         let e2 = Environment::new_shared();
-        assert!(!std::ptr::eq(&e1,&e2));
+        assert!(!std::ptr::eq(&e1, &e2));
     }
 
     #[test]
-    fn test_hashmaps_differ(){
+    fn test_hashmaps_differ() {
         // we need a special comparison to check hashmap identity
-        let h1 = HashMap::<i64,i64>::new();
-        let h2 = HashMap::<i64,i64>::new();
-        assert!(!std::ptr::eq(&h1,&h2));
+        let h1 = HashMap::<i64, i64>::new();
+        let h2 = HashMap::<i64, i64>::new();
+        assert!(!std::ptr::eq(&h1, &h2));
     }
 
     #[test]
-    fn test_assert_interprets_empty_string(){
+    fn test_assert_interprets_empty_string() {
         let p = "[]ASSERT";
         let r = run_with_prelude(p);
-        assert!(r.is_ok()); 
+        assert!(r.is_ok());
         let r = r.unwrap();
 
         let expected = run_with_prelude("false").unwrap();
-        assert_eq!(r,expected);
+        assert_eq!(r, expected);
     }
 
     #[test]
-    fn test_assert_throws_error_no_program(){
+    fn test_assert_throws_error_no_program() {
         let p = "ASSERT";
         let r = run_with_prelude(p);
         assert!(r.is_err());
     }
 
     #[test]
-    fn test_assert_throws_error_on_program(){
+    fn test_assert_throws_error_on_program() {
         let p = "[something_undefined] ASSERT";
         let result = run_with_prelude(p).unwrap();
         let expected = run_with_prelude("false").unwrap();
-        assert_eq!(result,expected);
+        assert_eq!(result, expected);
     }
 
     #[test]
-    fn test_assert_program_returns_true(){
+    fn test_assert_program_returns_true() {
         let p = "[true] ASSERT";
         let result = run_with_prelude(p).unwrap();
         let expected = run_with_prelude("true").unwrap();
-        assert_eq!(result,expected);
+        assert_eq!(result, expected);
     }
 
     #[test]
-    fn test_assert_program_returns_false(){
+    fn test_assert_program_returns_false() {
         let p = "[false] ASSERT";
         let result = run_with_prelude(p).unwrap();
         let expected = run_with_prelude("false").unwrap();
-        assert_eq!(result,expected);
+        assert_eq!(result, expected);
     }
 
-    //#[test]
-    fn test_assert_program_includes_new_definitions(){
-        let p = "[1][something_new]: [something_new] ASSERT";
+    #[test]
+    fn test_assert_program_includes_new_definitions() {
+        let p = "[[1]][something_new]: [something_new [1] eq] ASSERT";
         let result = run_with_prelude(p);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(),run_with_prelude("false").unwrap());
+        assert_eq!(result.unwrap(), run_with_prelude("true").unwrap());
     }
+
+    // test Environment equality checking
+    // envs must match depths, and all key-value members
+    #[test]
+    fn test_envs_different_depths() {
+        let e1 = Environment::new_shared().borrow().child_get();
+        let e2 = Environment::new_shared();
+        assert!(!Environment::shared_equals(e1, e2));
+    }
+
+    #[test]
+    fn test_local_keys_only_match() {
+        let e1 = Environment::new_shared();
+        let e2 = Environment::new_shared();
+        let v = make_sses("foo".to_string());
+        e1.borrow_mut().define("a".to_string(), v.clone());
+        e2.borrow_mut().define("a".to_string(), v);
+        assert!(Environment::shared_equals(e1, e2));
+    }
+    #[test]
+    fn test_local_keys_differ_match() {
+        let e1 = Environment::new_shared();
+        let e2 = Environment::new_shared();
+        let v1 = make_sses("foo".to_string());
+        let v2 = make_sses("bar".to_string());
+        e1.borrow_mut().define("a".to_string(), v1);
+        e2.borrow_mut().define("a".to_string(), v2);
+        assert!(!Environment::shared_equals(e1, e2));
+    }
+
+    #[test]
+    fn test_parents_differ_match() {
+        let e1 = Environment::new_shared().borrow_mut().child_get();
+        let e2 = Environment::new_shared().borrow_mut().child_get();
+        let v1 = make_sses("foo".to_string());
+        let v2 = make_sses("bar".to_string());
+        e1.borrow_mut()
+            .parent_get()
+            .unwrap()
+            .borrow_mut()
+            .define("b".to_string(), v1);
+        e2.borrow_mut()
+            .parent_get()
+            .unwrap()
+            .borrow_mut()
+            .define("a".to_string(), v2);
+        assert!(!Environment::shared_equals(e1, e2));
+    }
+
+    // keys all match
+    // keys differ locally
+    // local keys the same, but parent keys differ
 }

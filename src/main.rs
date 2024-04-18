@@ -1,5 +1,5 @@
+use label::{run_with_prelude, stack_to_string};
 use std::process::exit;
-use label::{run_with_prelude,stack_to_string};
 
 fn main() {
     let program = std::env::args().nth(1);
@@ -9,16 +9,16 @@ fn main() {
         exit(1);
     } else {
         // first check the prelude runs to completion
-        match run_with_prelude(""){
+        match run_with_prelude("") {
             Ok(_) => (),
-            Err(e)=> {
+            Err(e) => {
                 println!("There was a problem with the prelude {e}");
                 exit(1);
             }
         }
         // now run the program as requested
         let result = run_with_prelude(&program.unwrap());
-        match result{
+        match result {
             Ok(stack) => println!("{}", stack_to_string(stack)),
             Err(e) => println!("ERROR:{e}"),
         }
